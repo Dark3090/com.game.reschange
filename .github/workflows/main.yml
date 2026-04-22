@@ -27,27 +27,50 @@ jobs:
           import android.content.pm.ApplicationInfo;
           import android.content.pm.PackageManager;
           import android.content.SharedPreferences;
+          import android.content.Context;
 
           import de.robv.android.xposed.IXposedHookLoadPackage;
           import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
           import de.robv.android.xposed.XposedBridge;
           import de.robv.android.xposed.XposedHelpers;
           import de.robv.android.xposed.XC_MethodHook;
-          import de.robv.android.xposed.AndroidAppHelper;
-          import android.content.Context;
 
           public class XposedInit implements IXposedHookLoadPackage {
               private static final String PREF_NAME = "scale_prefs";
 
               @Override
               public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
+                  // Ignora o próprio módulo e o sistema
+                  if (lpparam.packageName.equals("com.game.reschange")) return;
+                  if (lpparam.packageName.equals("android")) return;
+
                   XposedBridge.hookAllMethods(
                           XposedHelpers.findClass("android.app.Application", lpparam.classLoader),
                           "onCreate",
                           new XC_MethodHook() {
                               @Override
                               protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                                  PackageManager mPkgMgr = ((Context) param.thisObject).getPackageManager();
+                                  Context ctx = (Context) param.thisObject;
+                                  PackageManager mPkgMgr = ctx.getPackageManager();
+
+                                  // Checa nas prefs se esse pacote foi configurado pelo usuário
+                                  try {
+                                      Context moduleCtx = ctx.createPackageContext(
+                                              "com.game.reschange",
+                                              Context.CONTEXT_IGNORE_SECURITY
+                                      );
+                                      SharedPreferences prefs = moduleCtx.getSharedPreferences(
+                                              PREF_NAME, Context.MODE_PRIVATE
+                                      );
+
+                                      // Só hookeia getApplicationInfoAsUser se o pacote tem escala configurada
+                                      if (!prefs.contains(lpparam.packageName)) return;
+                                      float scale = prefs.getFloat(lpparam.packageName, 1.0f);
+                                      if (scale >= 1.0f) return;
+
+                                  } catch (PackageManager.NameNotFoundException e) {
+                                      return;
+                                  }
 
                                   XposedBridge.hookAllMethods(
                                           mPkgMgr.getClass(),
@@ -57,29 +80,8 @@ jobs:
                                               protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                                                   ApplicationInfo info = (ApplicationInfo) param.getResultOrThrowable();
                                                   if (info == null) return;
-
-                                                  // Só muda a categoria se o pacote foi configurado pelo usuário
-                                                  Context app = AndroidAppHelper.currentApplication();
-                                                  if (app == null) return;
-
-                                                  try {
-                                                      Context moduleCtx = app.createPackageContext(
-                                                              "com.game.reschange",
-                                                              Context.CONTEXT_IGNORE_SECURITY
-                                                      );
-                                                      SharedPreferences prefs = moduleCtx.getSharedPreferences(
-                                                              PREF_NAME, Context.MODE_PRIVATE
-                                                      );
-                                                      if (prefs.contains(info.packageName)) {
-                                                          float scale = prefs.getFloat(info.packageName, 1.0f);
-                                                          if (scale < 1.0f) {
-                                                              info.category = ApplicationInfo.CATEGORY_GAME;
-                                                              param.setResult(info);
-                                                          }
-                                                      }
-                                                  } catch (PackageManager.NameNotFoundException e) {
-                                                      // Módulo não encontrado, não faz nada
-                                                  }
+                                                  info.category = ApplicationInfo.CATEGORY_GAME;
+                                                  param.setResult(info);
                                               }
                                           });
                               }
