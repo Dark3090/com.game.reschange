@@ -94,10 +94,14 @@ jobs:
           </resources>
           XML
 
-          # ── 3. Ícone ────────────────────────────────────────────────────
+          # ── 3. Ícone — remove originais e substitui ─────────────────────
+          find app/src/main/res -name "ic_launcher*.webp" -delete
+          find app/src/main/res -name "ic_launcher*.png" -delete
+          echo "Ícones originais removidos"
+
           pip install Pillow --quiet
 
-          python3 << 'PYTHON'
+          python3 - << 'PYTHON'
           import base64, os
           from PIL import Image
           from io import BytesIO
