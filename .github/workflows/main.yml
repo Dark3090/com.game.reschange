@@ -1,306 +1,165 @@
-name: Build Patched APK
+name: Build ResChange Reborn Full
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout código
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ─────────────────────────────────────────────────────────────
-      # PATCH 1 — XposedInit.java
-      # - Hook no system_server (processo "android") para setar
-      #   CATEGORY_GAME apenas nos apps configurados pelo usuário
-      # - Hook no processo do app para reaplicar downscale ao abrir
-      # - Lê config via arquivo world-readable (resolve SELinux 12+)
-      # ─────────────────────────────────────────────────────────────
-      - name: Patch 1 — XposedInit.java (system_server hook + auto-reapply)
+      - name: Clone original source
+        run: git clone https://github.com/Xposed-Modules-Repo/com.game.reschange source
+
+      - name: Copy source
         run: |
-          cat > app/src/main/java/com/game/reschange/XposedInit.java << 'EOF'
-          package com.game.reschange;
+          cp -r source/* .
+          rm -rf source
 
-          import android.content.pm.ApplicationInfo;
-          import android.content.pm.PackageManager;
-
-          import de.robv.android.xposed.IXposedHookLoadPackage;
-          import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
-          import de.robv.android.xposed.XposedBridge;
-          import de.robv.android.xposed.XposedHelpers;
-          import de.robv.android.xposed.XC_MethodHook;
-          import android.content.Context;
-
-          import java.io.BufferedReader;
-          import java.io.DataOutputStream;
-          import java.io.File;
-          import java.io.FileReader;
-
-          public class XposedInit implements IXposedHookLoadPackage {
-
-              private static final String CONFIG_FILE = "/data/local/tmp/reschange_config.txt";
-
-              @Override
-              public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
-
-                  // ESTRATÉGIA 1: Hook no system_server
-                  // É aqui que o Android decide se o app pode usar downscale.
-                  // Intercepta getApplicationInfo* no PackageManagerService e
-                  // marca como CATEGORY_GAME só os apps configurados pelo usuário.
-                  if ("android".equals(lpparam.packageName)) {
-
-                      XposedBridge.hookAllMethods(
-                              XposedHelpers.findClass("com.android.server.pm.PackageManagerService",
-                                      lpparam.classLoader),
-                              "getApplicationInfo",
-                              new XC_MethodHook() {
-                                  @Override
-                                  protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                                      ApplicationInfo info = (ApplicationInfo) param.getResult();
-                                      if (info == null) return;
-                                      if (isPackageConfigured(info.packageName)) {
-                                          info.category = ApplicationInfo.CATEGORY_GAME;
-                                          param.setResult(info);
-                                      }
-                                  }
-                              }
-                      );
-
-                      // Fallback para ROMs que usam getApplicationInfoAsUser
-                      XposedBridge.hookAllMethods(
-                              XposedHelpers.findClass("com.android.server.pm.PackageManagerService",
-                                      lpparam.classLoader),
-                              "getApplicationInfoAsUser",
-                              new XC_MethodHook() {
-                                  @Override
-                                  protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                                      ApplicationInfo info = (ApplicationInfo) param.getResult();
-                                      if (info == null) return;
-                                      if (isPackageConfigured(info.packageName)) {
-                                          info.category = ApplicationInfo.CATEGORY_GAME;
-                                          param.setResult(info);
-                                      }
-                                  }
-                              }
-                      );
-
-                      return;
-                  }
-
-                  // ESTRATÉGIA 2: Hook no processo do app alvo
-                  // Reaplicar o comando downscale automaticamente ao abrir o app.
-                  // Resolve o bug de "precisa clicar Apply toda vez".
-                  final String currentPackage = lpparam.packageName;
-                  final float savedScale = readScaleFromFile(currentPackage);
-
-                  if (savedScale < 1.0f) {
-                      XposedBridge.hookAllMethods(
-                              XposedHelpers.findClass("android.app.Application", lpparam.classLoader),
-                              "onCreate",
-                              new XC_MethodHook() {
-                                  @Override
-                                  protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                                      reApplyDownscale(currentPackage, savedScale);
-                                  }
-                              }
-                      );
-                  }
-              }
-
-              private boolean isPackageConfigured(String packageName) {
-                  File config = new File(CONFIG_FILE);
-                  if (!config.exists()) return false;
-                  try (BufferedReader br = new BufferedReader(new FileReader(config))) {
-                      String line;
-                      while ((line = br.readLine()) != null) {
-                          if (line.startsWith(packageName + "=")) {
-                              String[] parts = line.split("=");
-                              if (parts.length == 2)
-                                  return Float.parseFloat(parts[1].trim()) < 1.0f;
-                          }
-                      }
-                  } catch (Exception e) { /* ignorar */ }
-                  return false;
-              }
-
-              private float readScaleFromFile(String packageName) {
-                  File config = new File(CONFIG_FILE);
-                  if (!config.exists()) return 1.0f;
-                  try (BufferedReader br = new BufferedReader(new FileReader(config))) {
-                      String line;
-                      while ((line = br.readLine()) != null) {
-                          if (line.startsWith(packageName + "=")) {
-                              String[] parts = line.split("=");
-                              if (parts.length == 2)
-                                  return Float.parseFloat(parts[1].trim());
-                          }
-                      }
-                  } catch (Exception e) { /* ignorar */ }
-                  return 1.0f;
-              }
-
-              private void reApplyDownscale(String packageName, float scale) {
-                  try {
-                      String scaleStr = String.format(java.util.Locale.US, "%.2f", scale);
-                      String command = "cmd game downscale " + scaleStr + " " + packageName +
-                              " 2>/dev/null || cmd game set --downscale " + scaleStr + " " + packageName;
-                      Process process = Runtime.getRuntime().exec("su");
-                      DataOutputStream os = new DataOutputStream(process.getOutputStream());
-                      os.writeBytes(command + "\n");
-                      os.writeBytes("exit\n");
-                      os.flush();
-                      os.close();
-                      process.waitFor();
-                  } catch (Exception e) { /* ignorar */ }
-              }
-          }
-          EOF
-
-      # ─────────────────────────────────────────────────────────────
-      # PATCH 2 — ScalePrefs.kt
-      # - Grava config em /data/local/tmp/reschange_config.txt (644)
-      #   além do SharedPreferences, para o XposedInit ler de qualquer
-      #   processo sem depender de createPackageContext (bloqueado pelo
-      #   SELinux no Android 12+)
-      # - Adiciona removeScale() e clearAll() para o reset funcionar
-      # ─────────────────────────────────────────────────────────────
-      - name: Patch 2 — ScalePrefs.kt (world-readable config file)
-        run: |
-          cat > app/src/main/java/com/game/reschange/ScalePrefs.kt << 'EOF'
-          package com.game.reschange
-
-          import android.content.Context
-          import androidx.core.content.edit
-          import java.io.File
-
-          object ScalePrefs {
-              private const val PREF_NAME = "scale_prefs"
-              private const val CONFIG_FILE = "/data/local/tmp/reschange_config.txt"
-
-              fun saveScale(context: Context, packageName: String, scale: Float) {
-                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                      .edit { putFloat(packageName, scale) }
-                  writeConfigFile(context)
-              }
-
-              fun getAllPackages(context: Context): Set<String> =
-                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys
-
-              fun getScale(context: Context, packageName: String): Float =
-                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                      .getFloat(packageName, 1.0f)
-
-              fun removeScale(context: Context, packageName: String) {
-                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                      .edit { remove(packageName) }
-                  writeConfigFile(context)
-              }
-
-              fun clearAll(context: Context) {
-                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                      .edit { clear() }
-                  writeConfigFile(context)
-              }
-
-              /**
-               * Regrava /data/local/tmp/reschange_config.txt com permissão 644.
-               * Legível por qualquer processo (incluindo system_server) sem
-               * depender de createPackageContext, que é bloqueado pelo SELinux
-               * a partir do Android 12.
-               * Formato: uma linha por app — "com.exemplo.app=0.80"
-               */
-              private fun writeConfigFile(context: Context) {
-                  try {
-                      val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                      val lines = prefs.all
-                          .filterValues { it is Float && (it as Float) < 1.0f }
-                          .map { (pkg, scale) -> "$pkg=$scale" }
-                          .joinToString("\n")
-                      File(CONFIG_FILE).writeText(lines)
-                      Runtime.getRuntime()
-                          .exec(arrayOf("su", "-c", "chmod 644 $CONFIG_FILE"))
-                          .waitFor()
-                  } catch (e: Exception) { /* ignorar */ }
-              }
-          }
-          EOF
-
-      # ─────────────────────────────────────────────────────────────
-      # PATCH 3 — MainActivity.kt
-      # - Lista TODOS os apps instalados (não só os com ícone launcher)
-      # - Usa ScalePrefs.clearAll() e removeScale() no reset
-      # ─────────────────────────────────────────────────────────────
-      - name: Patch 3 — MainActivity.kt (todos os apps + reset correto)
+      - name: Apply FULL Patch
         run: |
           python3 << 'PYEOF'
-          import re
+          import os, pathlib
 
-          path = "app/src/main/java/com/game/reschange/MainActivity.kt"
-          with open(path, "r") as f:
-              content = f.read()
+          base="app/src/main/java/com/game/reschange"
+          pathlib.Path(base).mkdir(parents=True, exist_ok=True)
 
-          # 3a: substituir getUserInstalledApps
-          old_fn = re.search(
-              r'private fun getUserInstalledApps\(\).*?\.sortedBy \{ it\.name\.lowercase\(\) \}\s*\}',
-              content, re.DOTALL
-          )
-          if not old_fn:
-              print("ERRO: getUserInstalledApps não encontrado")
-              exit(1)
+          open(base+"/ScalePrefs.kt","w",encoding="utf-8").write("""
+package com.game.reschange
 
-          new_fn = '''private fun getUserInstalledApps(): List<AppInfo> {
-              val pm = packageManager
-              return pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                  .filter { app ->
-                      (app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 &&
-                      app.packageName != packageName
-                  }
-                  .distinctBy { it.packageName }
-                  .map { app ->
-                      AppInfo(
-                          name = pm.getApplicationLabel(app).toString(),
-                          packageName = app.packageName,
-                          icon = try { pm.getApplicationIcon(app) }
-                                 catch (e: Exception) { pm.defaultActivityIcon }
-                      )
-                  }
-                  .sortedBy { it.name.lowercase() }
-          }'''
+import android.content.Context
+import java.io.File
 
-          content = content[:old_fn.start()] + new_fn + content[old_fn.end():]
+object ScalePrefs {
+    private const val PREF_NAME = "scale_prefs"
+    private const val CONFIG_FILE = "/data/local/tmp/reschange_config.txt"
 
-          # 3b: reset all — trocar getSharedPreferences...clear() por ScalePrefs.clearAll()
-          content = content.replace(
-              'getSharedPreferences("scale_prefs", Context.MODE_PRIVATE)\n                .edit { clear() }',
-              'ScalePrefs.clearAll(this)'
-          )
+    fun saveScale(context: Context, pkg: String, scale: Float) {
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit().putFloat(pkg, scale).commit()
+        exportConfig(context)
+    }
 
-          # 3c: reset individual — trocar saveScale(..., 1.0f) por removeScale()
-          content = content.replace(
-              'ScalePrefs.saveScale(this, packageName, 1.0f)',
-              'ScalePrefs.removeScale(this, packageName)'
-          )
+    fun getScale(context: Context, pkg: String): Float =
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .getFloat(pkg, 1.0f)
 
-          with open(path, "w") as f:
-              f.write(content)
+    fun removeScale(context: Context, pkg: String) {
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit().remove(pkg).commit()
+        exportConfig(context)
+    }
 
-          print("Patch 3 aplicado com sucesso!")
+    fun clearAll(context: Context) {
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit().clear().commit()
+        exportConfig(context)
+    }
+
+    private fun exportConfig(context: Context) {
+        try {
+            val prefs=context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            val text=prefs.all
+                .filter { it.value is Float && (it.value as Float) < 1.0f }
+                .map { "${it.key}=${it.value}" }
+                .joinToString("\\n")
+            File(CONFIG_FILE).writeText(text)
+            Runtime.getRuntime().exec(arrayOf("su","-c","chmod 644 $CONFIG_FILE")).waitFor()
+        } catch(_: Exception){}
+    }
+}
+""")
+
+          open(base+"/XposedInit.java","w",encoding="utf-8").write(r"""
+package com.game.reschange;
+
+import android.content.pm.ApplicationInfo;
+import java.io.*;
+import java.util.Locale;
+import de.robv.android.xposed.*;
+import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
+
+public class XposedInit implements IXposedHookLoadPackage {
+    private static final String FILE="/data/local/tmp/reschange_config.txt";
+
+    public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
+
+        if ("android".equals(lpparam.packageName)) {
+            try {
+                Class<?> cls=XposedHelpers.findClass(
+                    "com.android.server.pm.PackageManagerService",
+                    lpparam.classLoader
+                );
+
+                XposedBridge.hookAllMethods(cls,"getApplicationInfo",
+                    new XC_MethodHook() {
+                        protected void afterHookedMethod(MethodHookParam p) throws Throwable {
+                            ApplicationInfo info=(ApplicationInfo)p.getResult();
+                            if(info==null) return;
+                            if(getScale(info.packageName)<1.0f){
+                                info.category=ApplicationInfo.CATEGORY_GAME;
+                                p.setResult(info);
+                            }
+                        }
+                    });
+            } catch(Throwable e){ XposedBridge.log(e); }
+            return;
+        }
+
+        final String pkg=lpparam.packageName;
+        final float scale=getScale(pkg);
+
+        if(scale<1.0f){
+            new Thread(() -> apply(pkg,scale)).start();
+        }
+    }
+
+    private float getScale(String pkg){
+        try{
+            BufferedReader br=new BufferedReader(new FileReader(FILE));
+            String line;
+            while((line=br.readLine())!=null){
+                if(line.startsWith(pkg+"=")){
+                    br.close();
+                    return Float.parseFloat(line.split("=")[1].trim());
+                }
+            }
+            br.close();
+        }catch(Exception ignored){}
+        return 1.0f;
+    }
+
+    private void apply(String pkg,float scale){
+        try{
+            String s=String.format(Locale.US,"%.2f",scale);
+            String cmd="cmd game downscale "+s+" "+pkg+
+                " || cmd game set --downscale "+s+" "+pkg;
+            Process p=Runtime.getRuntime().exec("su");
+            DataOutputStream os=new DataOutputStream(p.getOutputStream());
+            os.writeBytes(cmd+"\\n");
+            os.writeBytes("exit\\n");
+            os.flush();
+            os.close();
+        }catch(Exception ignored){}
+    }
+}
+""")
+          print("FULL PATCH OK")
           PYEOF
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
+          java-version: 17
           cache: gradle
 
-      - name: Permissão para gradlew
+      - name: Grant gradlew
         run: chmod +x gradlew
 
       - name: Build Release APK
@@ -309,6 +168,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: reschange-patched-${{ github.sha }}
+          name: ResChange-Reborn-Full
           path: app/build/outputs/apk/release/*.apk
-          retention-days: 30
