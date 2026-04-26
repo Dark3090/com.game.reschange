@@ -68,7 +68,13 @@ jobs:
                   exportConfig(context)
               }
 
-              fun getAllPackages(context: Context): Set<String>
+              fun getAllPackages(context: Context): Set<String> {
+    return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys
+}
+
+fun getPackages(context: Context): Set<String> {
+    return getAllPackages(context)
+}
                   context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys
 
               private fun exportConfig(context: Context) {
