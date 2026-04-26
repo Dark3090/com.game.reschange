@@ -24,131 +24,147 @@ jobs:
       - name: Apply FULL Patch
         run: |
           python3 << 'PYEOF'
-          import os, pathlib
+          from pathlib import Path
 
-          base="app/src/main/java/com/game/reschange"
-          pathlib.Path(base).mkdir(parents=True, exist_ok=True)
+          base = Path("app/src/main/java/com/game/reschange")
+          base.mkdir(parents=True, exist_ok=True)
 
-          open(base+"/ScalePrefs.kt","w",encoding="utf-8").write("""
-package com.game.reschange
+          (base / "ScalePrefs.kt").write_text('''
+          package com.game.reschange
 
-import android.content.Context
-import java.io.File
+          import android.content.Context
+          import androidx.core.content.edit
+          import java.io.File
 
-object ScalePrefs {
-    private const val PREF_NAME = "scale_prefs"
-    private const val CONFIG_FILE = "/data/local/tmp/reschange_config.txt"
+          object ScalePrefs {
+              private const val PREF_NAME = "scale_prefs"
+              private const val CONFIG_FILE = "/data/local/tmp/reschange_config.txt"
 
-    fun saveScale(context: Context, pkg: String, scale: Float) {
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .edit().putFloat(pkg, scale).commit()
-        exportConfig(context)
-    }
+              fun saveScale(context: Context, pkg: String, scale: Float) {
+                  val ok = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .edit()
+                      .putFloat(pkg, scale)
+                      .commit()
+                  if (ok) exportConfig(context)
+              }
 
-    fun getScale(context: Context, pkg: String): Float =
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .getFloat(pkg, 1.0f)
+              fun getScale(context: Context, pkg: String): Float =
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .getFloat(pkg, 1.0f)
 
-    fun removeScale(context: Context, pkg: String) {
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .edit().remove(pkg).commit()
-        exportConfig(context)
-    }
+              fun removeScale(context: Context, pkg: String) {
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .edit()
+                      .remove(pkg)
+                      .commit()
+                  exportConfig(context)
+              }
 
-    fun clearAll(context: Context) {
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .edit().clear().commit()
-        exportConfig(context)
-    }
+              fun clearAll(context: Context) {
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .edit()
+                      .clear()
+                      .commit()
+                  exportConfig(context)
+              }
 
-    private fun exportConfig(context: Context) {
-        try {
-            val prefs=context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            val text=prefs.all
-                .filter { it.value is Float && (it.value as Float) < 1.0f }
-                .map { "${it.key}=${it.value}" }
-                .joinToString("\\n")
-            File(CONFIG_FILE).writeText(text)
-            Runtime.getRuntime().exec(arrayOf("su","-c","chmod 644 $CONFIG_FILE")).waitFor()
-        } catch(_: Exception){}
-    }
-}
-""")
+              fun getPackages(context: Context): Set<String> =
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys
 
-          open(base+"/XposedInit.java","w",encoding="utf-8").write(r"""
-package com.game.reschange;
+              private fun exportConfig(context: Context) {
+                  try {
+                      val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      val text = prefs.all
+                          .filter { it.value is Float && (it.value as Float) < 1.0f }
+                          .map { "${it.key}=${it.value}" }
+                          .joinToString("\\n")
+                      File(CONFIG_FILE).writeText(text)
+                      Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 644 $CONFIG_FILE")).waitFor()
+                  } catch (_: Exception) {}
+              }
+          }
+          ''', encoding='utf-8')
 
-import android.content.pm.ApplicationInfo;
-import java.io.*;
-import java.util.Locale;
-import de.robv.android.xposed.*;
-import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
+          (base / "XposedInit.java").write_text(r'''
+          package com.game.reschange;
 
-public class XposedInit implements IXposedHookLoadPackage {
-    private static final String FILE="/data/local/tmp/reschange_config.txt";
+          import android.content.pm.ApplicationInfo;
+          import java.io.*;
+          import java.util.Locale;
 
-    public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
+          import de.robv.android.xposed.IXposedHookLoadPackage;
+          import de.robv.android.xposed.XC_MethodHook;
+          import de.robv.android.xposed.XposedBridge;
+          import de.robv.android.xposed.XposedHelpers;
+          import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 
-        if ("android".equals(lpparam.packageName)) {
-            try {
-                Class<?> cls=XposedHelpers.findClass(
-                    "com.android.server.pm.PackageManagerService",
-                    lpparam.classLoader
-                );
+          public class XposedInit implements IXposedHookLoadPackage {
+              private static final String FILE = "/data/local/tmp/reschange_config.txt";
 
-                XposedBridge.hookAllMethods(cls,"getApplicationInfo",
-                    new XC_MethodHook() {
-                        protected void afterHookedMethod(MethodHookParam p) throws Throwable {
-                            ApplicationInfo info=(ApplicationInfo)p.getResult();
-                            if(info==null) return;
-                            if(getScale(info.packageName)<1.0f){
-                                info.category=ApplicationInfo.CATEGORY_GAME;
-                                p.setResult(info);
-                            }
-                        }
-                    });
-            } catch(Throwable e){ XposedBridge.log(e); }
-            return;
-        }
+              @Override
+              public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
+                  if ("android".equals(lpparam.packageName)) {
+                      try {
+                          Class<?> cls = XposedHelpers.findClass(
+                              "com.android.server.pm.PackageManagerService",
+                              lpparam.classLoader
+                          );
 
-        final String pkg=lpparam.packageName;
-        final float scale=getScale(pkg);
+                          XposedBridge.hookAllMethods(cls, "getApplicationInfo",
+                              new XC_MethodHook() {
+                                  @Override
+                                  protected void afterHookedMethod(MethodHookParam p) throws Throwable {
+                                      ApplicationInfo info = (ApplicationInfo) p.getResult();
+                                      if (info == null) return;
+                                      if (getScale(info.packageName) < 1.0f) {
+                                          info.category = ApplicationInfo.CATEGORY_GAME;
+                                          p.setResult(info);
+                                      }
+                                  }
+                              });
+                      } catch (Throwable e) {
+                          XposedBridge.log(e);
+                      }
+                      return;
+                  }
 
-        if(scale<1.0f){
-            new Thread(() -> apply(pkg,scale)).start();
-        }
-    }
+                  final String pkg = lpparam.packageName;
+                  final float scale = getScale(pkg);
 
-    private float getScale(String pkg){
-        try{
-            BufferedReader br=new BufferedReader(new FileReader(FILE));
-            String line;
-            while((line=br.readLine())!=null){
-                if(line.startsWith(pkg+"=")){
-                    br.close();
-                    return Float.parseFloat(line.split("=")[1].trim());
-                }
-            }
-            br.close();
-        }catch(Exception ignored){}
-        return 1.0f;
-    }
+                  if (scale < 1.0f) {
+                      new Thread(() -> apply(pkg, scale)).start();
+                  }
+              }
 
-    private void apply(String pkg,float scale){
-        try{
-            String s=String.format(Locale.US,"%.2f",scale);
-            String cmd="cmd game downscale "+s+" "+pkg+
-                " || cmd game set --downscale "+s+" "+pkg;
-            Process p=Runtime.getRuntime().exec("su");
-            DataOutputStream os=new DataOutputStream(p.getOutputStream());
-            os.writeBytes(cmd+"\\n");
-            os.writeBytes("exit\\n");
-            os.flush();
-            os.close();
-        }catch(Exception ignored){}
-    }
-}
-""")
+              private float getScale(String pkg) {
+                  try (BufferedReader br = new BufferedReader(new FileReader(FILE))) {
+                      String line;
+                      while ((line = br.readLine()) != null) {
+                          if (line.startsWith(pkg + "=")) {
+                              return Float.parseFloat(line.split("=", 2)[1].trim());
+                          }
+                      }
+                  } catch (Exception ignored) {}
+                  return 1.0f;
+              }
+
+              private void apply(String pkg, float scale) {
+                  try {
+                      String s = String.format(Locale.US, "%.2f", scale);
+                      String cmd = "cmd game downscale " + s + " " + pkg +
+                          " || cmd game set --downscale " + s + " " + pkg;
+
+                      Process p = Runtime.getRuntime().exec("su");
+                      try (DataOutputStream os = new DataOutputStream(p.getOutputStream())) {
+                          os.writeBytes(cmd + "\n");
+                          os.writeBytes("exit\n");
+                          os.flush();
+                      }
+                  } catch (Exception ignored) {}
+              }
+          }
+          ''', encoding='utf-8')
+
           print("FULL PATCH OK")
           PYEOF
 
