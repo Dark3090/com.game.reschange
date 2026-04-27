@@ -1,10 +1,8 @@
-name: Build ResChange — DisplayMetrics Hook
+name: Fix DisplayMetrics Hook
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
 
 jobs:
@@ -15,194 +13,182 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: gradle
-
-      - name: Create XposedInit.java with DisplayMetrics Hook
+      - name: Fix XposedInit.java - Remove CATEGORY_GAME Hook
         run: |
-          mkdir -p app/src/main/java/com/game/reschange
-          cat > app/src/main/java/com/game/reschange/XposedInit.java << 'XPOSED_EOF'
+          cat > app/src/main/java/com/game/reschange/XposedInit.java << 'EOF'
           package com.game.reschange;
 
-          import android.content.SharedPreferences;
           import android.util.DisplayMetrics;
+          import android.view.Display;
+          import android.content.SharedPreferences;
+          import android.app.Application;
+          import android.content.Context;
+
           import de.robv.android.xposed.IXposedHookLoadPackage;
           import de.robv.android.xposed.XposedBridge;
           import de.robv.android.xposed.XposedHelpers;
-          import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
           import de.robv.android.xposed.XC_MethodHook;
-          import java.io.BufferedReader;
-          import java.io.File;
-          import java.io.FileReader;
-          import java.util.HashMap;
-          import java.util.Map;
+          import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 
           public class XposedInit implements IXposedHookLoadPackage {
-              private static Map<String, Float> scaleMap = new HashMap<>();
-              private static long lastReadTime = 0;
+
+              private static SharedPreferences sharedPrefs;
 
               @Override
-              public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
-                  hookDisplayMetrics(lpparam);
+              public void handleLoadPackage(LoadPackageParam lpparam) throws Throwable {
+                  try {
+                      hookDisplayMetrics(lpparam);
+                  } catch (Exception e) {
+                      XposedBridge.log("ResChange Error: " + e.getMessage());
+                  }
               }
 
-              private void hookDisplayMetrics(final LoadPackageParam lpparam) throws Throwable {
+              private void hookDisplayMetrics(LoadPackageParam lpparam) throws Throwable {
+                  Class<?> displayClass = XposedHelpers.findClass("android.view.Display", lpparam.classLoader);
+
+                  // Hook getRealMetrics(DisplayMetrics)
+                  XposedHelpers.findAndHookMethod(
+                      displayClass,
+                      "getRealMetrics",
+                      DisplayMetrics.class,
+                      new XC_MethodHook() {
+                          @Override
+                          protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                              applyScale(lpparam.packageName, (DisplayMetrics) param.args[0]);
+                          }
+                      }
+                  );
+
+                  // Hook getMetrics(DisplayMetrics) 
+                  XposedHelpers.findAndHookMethod(
+                      displayClass,
+                      "getMetrics",
+                      DisplayMetrics.class,
+                      new XC_MethodHook() {
+                          @Override
+                          protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                              applyScale(lpparam.packageName, (DisplayMetrics) param.args[0]);
+                          }
+                      }
+                  );
+
+                  // Hook getRealSize(Point)
                   try {
-                      Class<?> displayClass = XposedHelpers.findClass(
-                              "android.view.Display",
-                              lpparam.classLoader
-                      );
-
-                      // Hook getRealMetrics
+                      Class<?> pointClass = XposedHelpers.findClass("android.graphics.Point", lpparam.classLoader);
                       XposedHelpers.findAndHookMethod(
-                              displayClass,
-                              "getRealMetrics",
-                              DisplayMetrics.class,
-                              new XC_MethodHook() {
-                                  @Override
-                                  protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                                      DisplayMetrics metrics = (DisplayMetrics) param.args[0];
-                                      float scale = getScaleForPackage(lpparam.packageName);
-
-                                      if (scale != 1.0f) {
-                                          metrics.widthPixels = (int) (metrics.widthPixels * scale);
-                                          metrics.heightPixels = (int) (metrics.heightPixels * scale);
-                                          metrics.density *= scale;
-                                          metrics.densityDpi = (int) (metrics.densityDpi * scale);
-                                          metrics.xdpi *= scale;
-                                          metrics.ydpi *= scale;
-                                      }
+                          displayClass,
+                          "getRealSize",
+                          pointClass,
+                          new XC_MethodHook() {
+                              @Override
+                              protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                  Object point = param.args[0];
+                                  float scale = getScale(lpparam.packageName);
+                                  if (scale != 1.0f) {
+                                      int x = (int) XposedHelpers.getIntField(point, "x");
+                                      int y = (int) XposedHelpers.getIntField(point, "y");
+                                      XposedHelpers.setIntField(point, "x", (int)(x * scale));
+                                      XposedHelpers.setIntField(point, "y", (int)(y * scale));
                                   }
                               }
+                          }
                       );
+                  } catch (Exception e) {
+                      // getRealSize may not exist in all Android versions
+                  }
 
-                      // Hook getMetrics
+                  // Hook getSize(Point)
+                  try {
+                      Class<?> pointClass = XposedHelpers.findClass("android.graphics.Point", lpparam.classLoader);
                       XposedHelpers.findAndHookMethod(
-                              displayClass,
-                              "getMetrics",
-                              DisplayMetrics.class,
-                              new XC_MethodHook() {
-                                  @Override
-                                  protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                                      DisplayMetrics metrics = (DisplayMetrics) param.args[0];
-                                      float scale = getScaleForPackage(lpparam.packageName);
-
-                                      if (scale != 1.0f) {
-                                          metrics.widthPixels = (int) (metrics.widthPixels * scale);
-                                          metrics.heightPixels = (int) (metrics.heightPixels * scale);
-                                          metrics.density *= scale;
-                                          metrics.densityDpi = (int) (metrics.densityDpi * scale);
-                                          metrics.xdpi *= scale;
-                                          metrics.ydpi *= scale;
-                                      }
+                          displayClass,
+                          "getSize",
+                          pointClass,
+                          new XC_MethodHook() {
+                              @Override
+                              protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                  Object point = param.args[0];
+                                  float scale = getScale(lpparam.packageName);
+                                  if (scale != 1.0f) {
+                                      int x = (int) XposedHelpers.getIntField(point, "x");
+                                      int y = (int) XposedHelpers.getIntField(point, "y");
+                                      XposedHelpers.setIntField(point, "x", (int)(x * scale));
+                                      XposedHelpers.setIntField(point, "y", (int)(y * scale));
                                   }
                               }
+                          }
                       );
-
-                  } catch (Throwable t) {
-                      XposedBridge.log("ResChange: Error hooking DisplayMetrics: " + t);
+                  } catch (Exception e) {
+                      // getSize may not exist in all Android versions
                   }
               }
 
-              private float getScaleForPackage(String packageName) {
-                  try {
-                      // Reload cache a cada 2 segundos para detectar mudanças
-                      long currentTime = System.currentTimeMillis();
-                      if (currentTime - lastReadTime > 2000) {
-                          loadScalesFromFile();
-                          lastReadTime = currentTime;
-                      }
-
-                      return scaleMap.getOrDefault(packageName, 1.0f);
-                  } catch (Exception e) {
-                      XposedBridge.log("ResChange: Error getting scale: " + e);
-                      return 1.0f;
+              private void applyScale(String packageName, DisplayMetrics metrics) {
+                  float scale = getScale(packageName);
+                  if (scale != 1.0f && metrics != null) {
+                      metrics.widthPixels = Math.round(metrics.widthPixels * scale);
+                      metrics.heightPixels = Math.round(metrics.heightPixels * scale);
+                      metrics.density *= scale;
+                      metrics.densityDpi = Math.round(metrics.densityDpi * scale);
+                      metrics.xdpi *= scale;
+                      metrics.ydpi *= scale;
                   }
               }
 
-              private void loadScalesFromFile() {
+              private float getScale(String packageName) {
                   try {
-                      File configFile = new File("/data/local/tmp/reschange_config.json");
-                      if (!configFile.exists()) {
-                          return;
-                      }
-
-                      StringBuilder jsonContent = new StringBuilder();
-                      try (BufferedReader br = new BufferedReader(new FileReader(configFile))) {
-                          String line;
-                          while ((line = br.readLine()) != null) {
-                              jsonContent.append(line);
-                          }
-                      }
-
-                      // Parse simples de JSON
-                      String json = jsonContent.toString();
-                      scaleMap.clear();
-
-                      // Encontra padrão "package":"0.75"
-                      int pos = 0;
-                      while ((pos = json.indexOf("\"", pos)) != -1) {
-                          int packageStart = pos + 1;
-                          int packageEnd = json.indexOf("\"", packageStart);
-                          if (packageEnd == -1) break;
-
-                          String pkg = json.substring(packageStart, packageEnd);
-                          pos = packageEnd + 1;
-
-                          // Procura pelo valor
-                          int colonPos = json.indexOf(":", packageEnd);
-                          if (colonPos == -1) continue;
-
-                          int valueStart = colonPos + 1;
-                          int valueEnd = json.indexOf(",", valueStart);
-                          if (valueEnd == -1) {
-                              valueEnd = json.indexOf("}", valueStart);
-                          }
-
-                          String valueStr = json.substring(valueStart, valueEnd).trim();
-                          try {
-                              float scale = Float.parseFloat(valueStr);
-                              scaleMap.put(pkg, scale);
-                          } catch (NumberFormatException e) {
-                              // Ignore
-                          }
-
-                          pos = valueEnd;
+                      String scaleStr = readScaleFromFile(packageName);
+                      if (scaleStr != null && !scaleStr.isEmpty()) {
+                          return Float.parseFloat(scaleStr);
                       }
                   } catch (Exception e) {
-                      XposedBridge.log("ResChange: Error loading config: " + e);
+                      XposedBridge.log("ResChange: Error reading scale: " + e.getMessage());
                   }
+                  return 1.0f;
+              }
+
+              private String readScaleFromFile(String packageName) {
+                  try {
+                      java.io.File file = new java.io.File("/data/local/tmp/reschange_" + packageName + ".txt");
+                      if (file.exists()) {
+                          java.nio.file.Files.readAllLines(file.toPath());
+                          java.util.Scanner scanner = new java.util.Scanner(file);
+                          if (scanner.hasNextLine()) {
+                              String result = scanner.nextLine();
+                              scanner.close();
+                              return result.trim();
+                          }
+                          scanner.close();
+                      }
+                  } catch (Exception e) {
+                      XposedBridge.log("ResChange: Cannot read config file: " + e.getMessage());
+                  }
+                  return null;
               }
           }
-          XPOSED_EOF
+          EOF
 
-      - name: Create ScalePrefs.kt with File Persistence
+      - name: Update ScalePrefs.kt - Write to /data/local/tmp/
         run: |
-          cat > app/src/main/java/com/game/reschange/ScalePrefs.kt << 'PREFS_EOF'
+          cat > app/src/main/java/com/game/reschange/ScalePrefs.kt << 'EOF'
           package com.game.reschange
 
           import android.content.Context
           import androidx.core.content.edit
           import java.io.File
-          import org.json.JSONObject
 
           object ScalePrefs {
               private const val PREF_NAME = "scale_prefs"
-              private const val CONFIG_FILE = "/data/local/tmp/reschange_config.json"
 
               fun saveScale(context: Context, packageName: String, scale: Float) {
-                  // Salva em SharedPreferences
+                  // Salva em SharedPreferences (local)
                   context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
                       .edit {
                           putFloat(packageName, scale)
                       }
 
-                  // Salva em arquivo JSON para o módulo Xposed ler
-                  writeConfigFile(context)
+                  // Salva em arquivo acessível ao módulo Xposed
+                  writeScaleFile(packageName, scale)
               }
 
               fun removeScale(context: Context, packageName: String) {
@@ -210,15 +196,25 @@ jobs:
                       .edit {
                           remove(packageName)
                       }
-
-                  writeConfigFile(context)
+                  
+                  deleteScaleFile(packageName)
               }
 
               fun clearAll(context: Context) {
                   context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
                       .edit { clear() }
 
-                  writeConfigFile(context)
+                  // Delete all scale files
+                  try {
+                      val tmpDir = File("/data/local/tmp")
+                      tmpDir.listFiles()?.forEach { file ->
+                          if (file.name.startsWith("reschange_")) {
+                              file.delete()
+                          }
+                      }
+                  } catch (e: Exception) {
+                      e.printStackTrace()
+                  }
               }
 
               fun getScale(context: Context, packageName: String): Float {
@@ -230,251 +226,43 @@ jobs:
                   return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys
               }
 
-              private fun writeConfigFile(context: Context) {
+              private fun writeScaleFile(packageName: String, scale: Float) {
                   try {
-                      val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                      val json = JSONObject()
+                      val file = File("/data/local/tmp/reschange_$packageName.txt")
+                      file.writeText(scale.toString())
+                      Runtime.getRuntime().exec(arrayOf("chmod", "644", file.absolutePath)).waitFor()
+                  } catch (e: Exception) {
+                      e.printStackTrace()
+                  }
+              }
 
-                      for ((key, value) in prefs.all) {
-                          if (value is Float && value != 1.0f) {
-                              json.put(key, value)
-                          }
-                      }
-
-                      val configFile = File(CONFIG_FILE)
-                      configFile.writeText(json.toString())
-                      
-                      // chmod 644 para SELinux
-                      Runtime.getRuntime().exec(arrayOf("chmod", "644", CONFIG_FILE)).waitFor()
+              private fun deleteScaleFile(packageName: String) {
+                  try {
+                      val file = File("/data/local/tmp/reschange_$packageName.txt")
+                      file.delete()
                   } catch (e: Exception) {
                       e.printStackTrace()
                   }
               }
           }
-          PREFS_EOF
+          EOF
 
-      - name: Create Updated MainActivity.kt
-        run: |
-          cat > app/src/main/java/com/game/reschange/MainActivity.kt << 'MAIN_EOF'
-          package com.game.reschange
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
 
-          import android.content.Context
-          import android.content.Intent
-          import android.content.pm.ApplicationInfo
-          import android.content.pm.PackageManager
-          import android.os.Bundle
-          import android.view.Menu
-          import android.view.MenuItem
-          import android.widget.Button
-          import android.widget.LinearLayout
-          import android.widget.TextView
-          import android.widget.Toast
-          import com.google.android.material.slider.Slider
-          import androidx.appcompat.app.AppCompatActivity
-          import androidx.recyclerview.widget.LinearLayoutManager
-          import androidx.recyclerview.widget.RecyclerView
-          import com.google.android.material.dialog.MaterialAlertDialogBuilder
-          import com.google.android.material.switchmaterial.SwitchMaterial
-          import androidx.core.content.edit
-          import androidx.appcompat.widget.SearchView
-          import androidx.core.view.WindowCompat
-          import java.util.Locale
-
-          class MainActivity : AppCompatActivity() {
-
-              private lateinit var recyclerView: RecyclerView
-              private lateinit var adapter: AppListAdapter
-              private lateinit var toggleModified: SwitchMaterial
-
-              private lateinit var allApps: List<AppInfo>
-
-              private var showOnlyModified = false
-              private var currentQuery: String = ""
-
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-
-                  WindowCompat.setDecorFitsSystemWindows(window, false)
-
-                  setContentView(R.layout.activity_main)
-                  setSupportActionBar(findViewById(R.id.myToolbar))
-
-                  recyclerView = findViewById(R.id.appList)
-                  toggleModified = findViewById(R.id.toggleModified)
-                  recyclerView.layoutManager = LinearLayoutManager(this)
-
-                  allApps = getAllInstalledApps()
-                  adapter = AppListAdapter(allApps) { appInfo ->
-                      showResolutionDialog(appInfo.packageName)
-                  }
-                  recyclerView.adapter = adapter
-
-                  toggleModified.setOnCheckedChangeListener { _, isChecked ->
-                      showOnlyModified = isChecked
-                      filterAppList()
-                  }
-
-                  val resetButton = findViewById<Button>(R.id.resetButton)
-                  resetButton.setOnClickListener {
-                      MaterialAlertDialogBuilder(this)
-                          .setTitle("Reset All Resolutions?")
-                          .setMessage("This will reset all app resolutions to default.")
-                          .setPositiveButton("Reset") { _, _ ->
-                              ScalePrefs.clearAll(this)
-                              adapter.notifyDataSetChanged()
-                              Toast.makeText(this, "All resolutions reset", Toast.LENGTH_SHORT).show()
-                          }
-                          .setNegativeButton("Cancel", null)
-                          .show()
-                  }
-              }
-
-              override fun onCreateOptionsMenu(menu: Menu): Boolean {
-                  menuInflater.inflate(R.menu.menu_main, menu)
-                  val searchItem = menu.findItem(R.id.action_search)
-                  val searchView = searchItem.actionView as SearchView
-
-                  searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                      override fun onQueryTextSubmit(query: String?): Boolean = true
-                      override fun onQueryTextChange(newText: String?): Boolean {
-                          currentQuery = newText.orEmpty()
-                          filterAppList()
-                          return true
-                      }
-                  })
-                  return true
-              }
-
-              private fun filterAppList() {
-                  var tempList = allApps
-
-                  if (showOnlyModified) {
-                      tempList = tempList.filter { app ->
-                          ScalePrefs.getScale(this, app.packageName) != 1.0f
-                      }
-                  }
-
-                  if (currentQuery.isNotEmpty()) {
-                      val lowerQ = currentQuery.lowercase(Locale.getDefault())
-                      tempList = tempList.filter { app ->
-                          app.name.lowercase(Locale.getDefault()).contains(lowerQ)
-                                  || app.packageName.lowercase(Locale.getDefault()).contains(lowerQ)
-                      }
-                  }
-
-                  adapter.submitList(tempList)
-              }
-
-              private fun getAllInstalledApps(): List<AppInfo> {
-                  val pm = packageManager
-                  val allApps = mutableListOf<AppInfo>()
-
-                  try {
-                      val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                      for (app in packages) {
-                          if ((app.flags and ApplicationInfo.FLAG_SYSTEM) == 0) {
-                              val name = pm.getApplicationLabel(app).toString()
-                              val icon = pm.getApplicationIcon(app)
-                              allApps.add(AppInfo(name, app.packageName, icon))
-                          }
-                      }
-                  } catch (e: Exception) {
-                      Toast.makeText(this, "Error loading apps: ${e.message}", Toast.LENGTH_SHORT).show()
-                  }
-
-                  return allApps.sortedBy { it.name.lowercase() }
-              }
-
-              private fun showResolutionDialog(packageName: String) {
-                  val savedScale = ScalePrefs.getScale(this, packageName)
-                  val layout = LinearLayout(this).apply {
-                      orientation = LinearLayout.VERTICAL
-                      setPadding(50, 40, 50, 10)
-                  }
-
-                  val scaleText = TextView(this).apply {
-                      textSize = 18f
-                      setPadding(0, 0, 0, 20)
-                      text = "Scale: ${(savedScale * 100).toInt()}%"
-                  }
-
-                  val slider = Slider(this).apply {
-                      valueFrom = 0.3f
-                      valueTo = 1.0f
-                      stepSize = 0.05f
-                      value = savedScale
-                      isTickVisible = true
-                  }
-
-                  slider.addOnChangeListener { _, value, _ ->
-                      val percentage = (value * 100).toInt()
-                      scaleText.text = "Scale: $percentage%"
-                  }
-
-                  layout.addView(scaleText)
-                  layout.addView(slider)
-
-                  MaterialAlertDialogBuilder(this, R.style.MyRoundedDialog)
-                      .setTitle("Set Resolution Scale")
-                      .setView(layout)
-                      .setPositiveButton("Apply") { _, _ ->
-                          var scale = String.format(Locale.US, "%.2f", slider.value).toFloat()
-
-                          if (scale == 0.95f) {
-                              scale = 0.9f
-                              Toast.makeText(this, "95% not supported. Using 90%.", Toast.LENGTH_SHORT).show()
-                          }
-
-                          val percentage = (scale * 100).toInt()
-                          ScalePrefs.saveScale(this, packageName, scale)
-                          adapter.notifyDataSetChanged()
-
-                          val message = if (scale == 1.0f) {
-                              "Resolution reset to default (100%)"
-                          } else {
-                              "Resolution changed to $percentage%"
-                          }
-
-                          Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-                          Toast.makeText(this, "Reopen $packageName to apply changes", Toast.LENGTH_SHORT).show()
-                      }
-                      .setNegativeButton("Cancel", null)
-                      .setNeutralButton("Reset") { _, _ ->
-                          ScalePrefs.removeScale(this, packageName)
-                          adapter.notifyDataSetChanged()
-                          Toast.makeText(this, "Resolution reset to default", Toast.LENGTH_SHORT).show()
-                      }
-                      .show()
-              }
-          }
-          MAIN_EOF
-
-      - name: Grant execute permission for gradlew
+      - name: Grant execute permission
         run: chmod +x gradlew
 
       - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ResChange-DisplayMetrics-${{ github.sha }}
+          name: ResChange-Fixed-${{ github.sha }}
           path: app/build/outputs/apk/release/
           retention-days: 30
-
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: ResChange DisplayMetrics ${{ github.ref }}
-          body: |
-            ## ResChange with DisplayMetrics Hook
-            - ✅ Hook DisplayMetrics para redimensionar apps
-            - ✅ Funciona com QUALQUER app (não só jogos)
-            - ✅ Configurações salvas automaticamente
-            - ✅ Baseado na abordagem XposedAppSettings (rovo89)
-          draft: false
-          prerelease: false
