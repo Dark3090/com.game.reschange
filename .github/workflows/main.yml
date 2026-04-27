@@ -1,82 +1,19 @@
-name: Build ResChange — DisplayMetrics
+name: Build ResChange — DisplayMetrics Hook
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: [main]
   pull_request:
-    branches: [ main, master ]
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Clonar codigo fonte original
-        run: |
-          git clone https://github.com/Xposed-Modules-Repo/com.game.reschange source
-          cp -r source/. .
-          rm -rf source
-
-      # ── PATCH 1 — XposedInit.java ──────────────────────────────
-      # Nova abordagem: hook em Resources.getDisplayMetrics()
-      # Nao depende de CATEGORY_GAME nem de cmd game downscale.
-      # Funciona para qualquer app em Android 8.1 ate 16+.
-      # Baseado na abordagem comprovada do XposedAppSettings (rovo89).
-      - name: Patch 1 — XposedInit.java (DisplayMetrics hook)
-        run: echo 'cGFja2FnZSBjb20uZ2FtZS5yZXNjaGFuZ2U7CgppbXBvcnQgYW5kcm9pZC5jb250ZW50LnJlcy5SZXNvdXJjZXM7CmltcG9ydCBhbmRyb2lkLnV0aWwuRGlzcGxheU1ldHJpY3M7CmltcG9ydCBhbmRyb2lkLmFwcC5BcHBsaWNhdGlvbjsKCmltcG9ydCBqYXZhLmlvLkJ1ZmZlcmVkUmVhZGVyOwppbXBvcnQgamF2YS5pby5GaWxlOwppbXBvcnQgamF2YS5pby5GaWxlUmVhZGVyOwoKaW1wb3J0IGRlLnJvYnYuYW5kcm9pZC54cG9zZWQuSVhwb3NlZEhvb2tMb2FkUGFja2FnZTsKaW1wb3J0IGRlLnJvYnYuYW5kcm9pZC54cG9zZWQuWENfTWV0aG9kSG9vazsKaW1wb3J0IGRlLnJvYnYuYW5kcm9pZC54cG9zZWQuWHBvc2VkSGVscGVyczsKaW1wb3J0IGRlLnJvYnYuYW5kcm9pZC54cG9zZWQuY2FsbGJhY2tzLlhDX0xvYWRQYWNrYWdlLkxvYWRQYWNrYWdlUGFyYW07CgpwdWJsaWMgY2xhc3MgWHBvc2VkSW5pdCBpbXBsZW1lbnRzIElYcG9zZWRIb29rTG9hZFBhY2thZ2UgewoKICAgIHByaXZhdGUgc3RhdGljIGZpbmFsIFN0cmluZyBDT05GSUdfRklMRSA9ICIvZGF0YS9sb2NhbC90bXAvcmVzY2hhbmdlX2NvbmZpZy50eHQiOwoKICAgIEBPdmVycmlkZQogICAgcHVibGljIHZvaWQgaGFuZGxlTG9hZFBhY2thZ2UoZmluYWwgTG9hZFBhY2thZ2VQYXJhbSBscHBhcmFtKSB0aHJvd3MgVGhyb3dhYmxlIHsKICAgICAgICBpZiAobHBwYXJhbS5wYWNrYWdlTmFtZSA9PSBudWxsCiAgICAgICAgICAgICAgICB8fCBscHBhcmFtLnBhY2thZ2VOYW1lLmVxdWFscygiY29tLmdhbWUucmVzY2hhbmdlIikKICAgICAgICAgICAgICAgIHx8IGxwcGFyYW0ucGFja2FnZU5hbWUuZXF1YWxzKCJhbmRyb2lkIikpIHJldHVybjsKCiAgICAgICAgZmluYWwgZmxvYXQgc2NhbGUgPSByZWFkU2NhbGUobHBwYXJhbS5wYWNrYWdlTmFtZSk7CiAgICAgICAgaWYgKHNjYWxlID49IDEuMGYpIHJldHVybjsKCiAgICAgICAgLy8gSG9vayAxOiBSZXNvdXJjZXMuZ2V0RGlzcGxheU1ldHJpY3MoKQogICAgICAgIC8vIEludGVyY2VwdGEgdG9kYSB2ZXogcXVlIG8gYXBwIHBlcmd1bnRhIG8gdGFtYW5obyBkYSB0ZWxhLgogICAgICAgIC8vIEZ1bmNpb25hIHBhcmEgUVVBTFFVRVIgYXBwIHNlbSBDQVRFR09SWV9HQU1FIG91IGNtZCBnYW1lLgogICAgICAgIFhwb3NlZEhlbHBlcnMuZmluZEFuZEhvb2tNZXRob2QoUmVzb3VyY2VzLmNsYXNzLCAiZ2V0RGlzcGxheU1ldHJpY3MiLAogICAgICAgICAgICBuZXcgWENfTWV0aG9kSG9vaygpIHsKICAgICAgICAgICAgICAgIEBPdmVycmlkZQogICAgICAgICAgICAgICAgcHJvdGVjdGVkIHZvaWQgYWZ0ZXJIb29rZWRNZXRob2QoTWV0aG9kSG9va1BhcmFtIHBhcmFtKSB0aHJvd3MgVGhyb3dhYmxlIHsKICAgICAgICAgICAgICAgICAgICBEaXNwbGF5TWV0cmljcyBkbSA9IChEaXNwbGF5TWV0cmljcykgcGFyYW0uZ2V0UmVzdWx0KCk7CiAgICAgICAgICAgICAgICAgICAgaWYgKGRtICE9IG51bGwpIGFwcGx5U2NhbGUoZG0sIHNjYWxlKTsKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfSk7CgogICAgICAgIC8vIEhvb2sgMjogQXBwbGljYXRpb24ub25DcmVhdGUoKQogICAgICAgIC8vIEdhcmFudGUgZGltZW5zb2VzIGNvcnJldGFzIGRlc2RlIG8gaW5pY2lvLCBhbnRlcyBkbyBwcmltZWlybyBsYXlvdXQuCiAgICAgICAgWHBvc2VkSGVscGVycy5maW5kQW5kSG9va01ldGhvZChBcHBsaWNhdGlvbi5jbGFzcywgIm9uQ3JlYXRlIiwKICAgICAgICAgICAgbmV3IFhDX01ldGhvZEhvb2soKSB7CiAgICAgICAgICAgICAgICBAT3ZlcnJpZGUKICAgICAgICAgICAgICAgIHByb3RlY3RlZCB2b2lkIGJlZm9yZUhvb2tlZE1ldGhvZChNZXRob2RIb29rUGFyYW0gcGFyYW0pIHRocm93cyBUaHJvd2FibGUgewogICAgICAgICAgICAgICAgICAgIEFwcGxpY2F0aW9uIGFwcCA9IChBcHBsaWNhdGlvbikgcGFyYW0udGhpc09iamVjdDsKICAgICAgICAgICAgICAgICAgICBpZiAoYXBwID09IG51bGwpIHJldHVybjsKICAgICAgICAgICAgICAgICAgICBEaXNwbGF5TWV0cmljcyBkbSA9IGFwcC5nZXRSZXNvdXJjZXMoKS5nZXREaXNwbGF5TWV0cmljcygpOwogICAgICAgICAgICAgICAgICAgIGlmIChkbSAhPSBudWxsKSBhcHBseVNjYWxlKGRtLCBzY2FsZSk7CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0pOwogICAgfQoKICAgIHByaXZhdGUgdm9pZCBhcHBseVNjYWxlKERpc3BsYXlNZXRyaWNzIGRtLCBmbG9hdCBzY2FsZSkgewogICAgICAgIGRtLndpZHRoUGl4ZWxzICA9IE1hdGgucm91bmQoZG0ud2lkdGhQaXhlbHMgICogc2NhbGUpOwogICAgICAgIGRtLmhlaWdodFBpeGVscyA9IE1hdGgucm91bmQoZG0uaGVpZ2h0UGl4ZWxzICogc2NhbGUpOwogICAgICAgIGRtLmRlbnNpdHkgICAgICA9IGRtLmRlbnNpdHkgICogc2NhbGU7CiAgICAgICAgZG0uZGVuc2l0eURwaSAgID0gTWF0aC5yb3VuZChkbS5kZW5zaXR5RHBpICAgKiBzY2FsZSk7CiAgICB9CgogICAgcHJpdmF0ZSBmbG9hdCByZWFkU2NhbGUoU3RyaW5nIHBrZykgewogICAgICAgIHRyeSAoQnVmZmVyZWRSZWFkZXIgYnIgPSBuZXcgQnVmZmVyZWRSZWFkZXIobmV3IEZpbGVSZWFkZXIoQ09ORklHX0ZJTEUpKSkgewogICAgICAgICAgICBTdHJpbmcgbGluZTsKICAgICAgICAgICAgd2hpbGUgKChsaW5lID0gYnIucmVhZExpbmUoKSkgIT0gbnVsbCkgewogICAgICAgICAgICAgICAgbGluZSA9IGxpbmUudHJpbSgpOwogICAgICAgICAgICAgICAgaWYgKGxpbmUuc3RhcnRzV2l0aChwa2cgKyAiPSIpKQogICAgICAgICAgICAgICAgICAgIHJldHVybiBGbG9hdC5wYXJzZUZsb2F0KGxpbmUuc3BsaXQoIj0iLCAyKVsxXS50cmltKCkpOwogICAgICAgICAgICB9CiAgICAgICAgfSBjYXRjaCAoRXhjZXB0aW9uIGlnbm9yZWQpIHt9CiAgICAgICAgcmV0dXJuIDEuMGY7CiAgICB9Cn0K' | base64 -d > app/src/main/java/com/game/reschange/XposedInit.java
-
-      # ── PATCH 2 — ScalePrefs.kt ────────────────────────────────
-      # Salva config em /data/local/tmp/reschange_config.txt (644)
-      # para o XposedInit ler sem SELinux block (Android 12+).
-      # Adiciona removeScale() e clearAll() para reset funcionar.
-      - name: Patch 2 — ScalePrefs.kt
-        run: echo 'cGFja2FnZSBjb20uZ2FtZS5yZXNjaGFuZ2UKCmltcG9ydCBhbmRyb2lkLmNvbnRlbnQuQ29udGV4dAppbXBvcnQgYW5kcm9pZHguY29yZS5jb250ZW50LmVkaXQKaW1wb3J0IGphdmEuaW8uRmlsZQoKb2JqZWN0IFNjYWxlUHJlZnMgewogICAgcHJpdmF0ZSBjb25zdCB2YWwgUFJFRl9OQU1FID0gInNjYWxlX3ByZWZzIgogICAgcHJpdmF0ZSBjb25zdCB2YWwgQ09ORklHX0ZJTEUgPSAiL2RhdGEvbG9jYWwvdG1wL3Jlc2NoYW5nZV9jb25maWcudHh0IgoKICAgIGZ1biBzYXZlU2NhbGUoY29udGV4dDogQ29udGV4dCwgcGFja2FnZU5hbWU6IFN0cmluZywgc2NhbGU6IEZsb2F0KSB7CiAgICAgICAgY29udGV4dC5nZXRTaGFyZWRQcmVmZXJlbmNlcyhQUkVGX05BTUUsIENvbnRleHQuTU9ERV9QUklWQVRFKQogICAgICAgICAgICAuZWRpdCB7IHB1dEZsb2F0KHBhY2thZ2VOYW1lLCBzY2FsZSkgfQogICAgICAgIHdyaXRlQ29uZmlnRmlsZShjb250ZXh0KQogICAgfQoKICAgIGZ1biBnZXRBbGxQYWNrYWdlcyhjb250ZXh0OiBDb250ZXh0KTogU2V0PFN0cmluZz4gPQogICAgICAgIGNvbnRleHQuZ2V0U2hhcmVkUHJlZmVyZW5jZXMoUFJFRl9OQU1FLCBDb250ZXh0Lk1PREVfUFJJVkFURSkuYWxsLmtleXMKCiAgICBmdW4gZ2V0U2NhbGUoY29udGV4dDogQ29udGV4dCwgcGFja2FnZU5hbWU6IFN0cmluZyk6IEZsb2F0ID0KICAgICAgICBjb250ZXh0LmdldFNoYXJlZFByZWZlcmVuY2VzKFBSRUZfTkFNRSwgQ29udGV4dC5NT0RFX1BSSVZBVEUpCiAgICAgICAgICAgIC5nZXRGbG9hdChwYWNrYWdlTmFtZSwgMS4wZikKCiAgICBmdW4gcmVtb3ZlU2NhbGUoY29udGV4dDogQ29udGV4dCwgcGFja2FnZU5hbWU6IFN0cmluZykgewogICAgICAgIGNvbnRleHQuZ2V0U2hhcmVkUHJlZmVyZW5jZXMoUFJFRl9OQU1FLCBDb250ZXh0Lk1PREVfUFJJVkFURSkKICAgICAgICAgICAgLmVkaXQgeyByZW1vdmUocGFja2FnZU5hbWUpIH0KICAgICAgICB3cml0ZUNvbmZpZ0ZpbGUoY29udGV4dCkKICAgIH0KCiAgICBmdW4gY2xlYXJBbGwoY29udGV4dDogQ29udGV4dCkgewogICAgICAgIGNvbnRleHQuZ2V0U2hhcmVkUHJlZmVyZW5jZXMoUFJFRl9OQU1FLCBDb250ZXh0Lk1PREVfUFJJVkFURSkKICAgICAgICAgICAgLmVkaXQgeyBjbGVhcigpIH0KICAgICAgICB3cml0ZUNvbmZpZ0ZpbGUoY29udGV4dCkKICAgIH0KCiAgICBwcml2YXRlIGZ1biB3cml0ZUNvbmZpZ0ZpbGUoY29udGV4dDogQ29udGV4dCkgewogICAgICAgIHRyeSB7CiAgICAgICAgICAgIHZhbCBwcmVmcyA9IGNvbnRleHQuZ2V0U2hhcmVkUHJlZmVyZW5jZXMoUFJFRl9OQU1FLCBDb250ZXh0Lk1PREVfUFJJVkFURSkKICAgICAgICAgICAgdmFsIGxpbmVzID0gcHJlZnMuYWxsCiAgICAgICAgICAgICAgICAuZmlsdGVyVmFsdWVzIHsgaXQgaXMgRmxvYXQgJiYgKGl0IGFzIEZsb2F0KSA8IDEuMGYgfQogICAgICAgICAgICAgICAgLm1hcCB7IChwa2csIHNjYWxlKSAtPiAiJHBrZz0kc2NhbGUiIH0KICAgICAgICAgICAgICAgIC5qb2luVG9TdHJpbmcoIlxuIikKICAgICAgICAgICAgRmlsZShDT05GSUdfRklMRSkud3JpdGVUZXh0KGxpbmVzKQogICAgICAgICAgICBSdW50aW1lLmdldFJ1bnRpbWUoKQogICAgICAgICAgICAgICAgLmV4ZWMoYXJyYXlPZigic3UiLCAiLWMiLCAiY2htb2QgNjQ0ICRDT05GSUdfRklMRSIpKQogICAgICAgICAgICAgICAgLndhaXRGb3IoKQogICAgICAgIH0gY2F0Y2ggKGU6IEV4Y2VwdGlvbikge30KICAgIH0KfQo=' | base64 -d > app/src/main/java/com/game/reschange/ScalePrefs.kt
-
-      # ── PATCH 3 — MainActivity.kt ──────────────────────────────
-      # Lista TODOS os apps instalados (nao so os com launcher).
-      # Reset correto via ScalePrefs.clearAll() e removeScale().
-      - name: Patch 3 — MainActivity.kt
-        run: echo 'cGFja2FnZSBjb20uZ2FtZS5yZXNjaGFuZ2UKCmltcG9ydCBhbmRyb2lkLmNvbnRlbnQuQ29udGV4dAppbXBvcnQgYW5kcm9pZC5jb250ZW50LkludGVudAppbXBvcnQgYW5kcm9pZC5jb250ZW50LnBtLkFwcGxpY2F0aW9uSW5mbwppbXBvcnQgYW5kcm9pZC5jb250ZW50LnBtLlBhY2thZ2VNYW5hZ2VyCmltcG9ydCBhbmRyb2lkLm9zLkJ1bmRsZQppbXBvcnQgYW5kcm9pZC52aWV3Lk1lbnUKaW1wb3J0IGFuZHJvaWQudmlldy5NZW51SXRlbQppbXBvcnQgYW5kcm9pZC53aWRnZXQuQnV0dG9uCmltcG9ydCBhbmRyb2lkLndpZGdldC5MaW5lYXJMYXlvdXQKaW1wb3J0IGFuZHJvaWQud2lkZ2V0LlRleHRWaWV3CmltcG9ydCBhbmRyb2lkLndpZGdldC5Ub2FzdAppbXBvcnQgY29tLmdvb2dsZS5hbmRyb2lkLm1hdGVyaWFsLnNsaWRlci5TbGlkZXIKaW1wb3J0IGFuZHJvaWR4LmFwcGNvbXBhdC5hcHAuQXBwQ29tcGF0QWN0aXZpdHkKaW1wb3J0IGFuZHJvaWR4LnJlY3ljbGVydmlldy53aWRnZXQuTGluZWFyTGF5b3V0TWFuYWdlcgppbXBvcnQgYW5kcm9pZHgucmVjeWNsZXJ2aWV3LndpZGdldC5SZWN5Y2xlclZpZXcKaW1wb3J0IGNvbS5nb29nbGUuYW5kcm9pZC5tYXRlcmlhbC5kaWFsb2cuTWF0ZXJpYWxBbGVydERpYWxvZ0J1aWxkZXIKaW1wb3J0IGNvbS5nb29nbGUuYW5kcm9pZC5tYXRlcmlhbC5zd2l0Y2htYXRlcmlhbC5Td2l0Y2hNYXRlcmlhbAppbXBvcnQgamF2YS5pby5EYXRhT3V0cHV0U3RyZWFtCmltcG9ydCBqYXZhLnV0aWwuTG9jYWxlCmltcG9ydCBhbmRyb2lkeC5jb3JlLmNvbnRlbnQuZWRpdAppbXBvcnQgYW5kcm9pZHguYXBwY29tcGF0LndpZGdldC5TZWFyY2hWaWV3CmltcG9ydCBhbmRyb2lkeC5jb3JlLnZpZXcuV2luZG93Q29tcGF0CgpjbGFzcyBNYWluQWN0aXZpdHkgOiBBcHBDb21wYXRBY3Rpdml0eSgpIHsKCgogICAgcHJpdmF0ZSBsYXRlaW5pdCB2YXIgcmVjeWNsZXJWaWV3OiBSZWN5Y2xlclZpZXcKICAgIHByaXZhdGUgbGF0ZWluaXQgdmFyIGFkYXB0ZXI6IEFwcExpc3RBZGFwdGVyCiAgICBwcml2YXRlIGxhdGVpbml0IHZhciB0b2dnbGVNb2RpZmllZDogU3dpdGNoTWF0ZXJpYWwKCiAgICAvLyBGdWxsIGxpc3Qgb2YgdXNlci1pbnN0YWxsZWQgYXBwcwogICAgcHJpdmF0ZSBsYXRlaW5pdCB2YXIgYWxsQXBwczogTGlzdDxBcHBJbmZvPgoKICAgIC8vIEN1cnJlbnQgRmlsdGVyIHN0YXRlcwogICAgcHJpdmF0ZSB2YXIgc2hvd09ubHlNb2RpZmllZCA9IGZhbHNlCiAgICBwcml2YXRlIHZhciBjdXJyZW50UXVlcnk6IFN0cmluZyA9ICIiCgogICAgb3ZlcnJpZGUgZnVuIG9uQ3JlYXRlKHNhdmVkSW5zdGFuY2VTdGF0ZTogQnVuZGxlPykgewogICAgICAgIHN1cGVyLm9uQ3JlYXRlKHNhdmVkSW5zdGFuY2VTdGF0ZSkKCiAgICAgICAgV2luZG93Q29tcGF0LnNldERlY29yRml0c1N5c3RlbVdpbmRvd3Mod2luZG93LCBmYWxzZSkKCiAgICAgICAgc2V0Q29udGVudFZpZXcoUi5sYXlvdXQuYWN0aXZpdHlfbWFpbikKICAgICAgICBzZXRTdXBwb3J0QWN0aW9uQmFyKGZpbmRWaWV3QnlJZChSLmlkLm15VG9vbGJhcikpCgogICAgICAgIHJlY3ljbGVyVmlldyA9IGZpbmRWaWV3QnlJZChSLmlkLmFwcExpc3QpCiAgICAgICAgdG9nZ2xlTW9kaWZpZWQgPSBmaW5kVmlld0J5SWQoUi5pZC50b2dnbGVNb2RpZmllZCkKICAgICAgICByZWN5Y2xlclZpZXcubGF5b3V0TWFuYWdlciA9IExpbmVhckxheW91dE1hbmFnZXIodGhpcykKCgogICAgICAgIGFsbEFwcHMgPSBnZXRVc2VySW5zdGFsbGVkQXBwcygpCiAgICAgICAgYWRhcHRlciA9IEFwcExpc3RBZGFwdGVyKGFsbEFwcHMpIHsgYXBwSW5mbyAtPgogICAgICAgICAgICBzaG93UmVzb2x1dGlvbkRpYWxvZyhhcHBJbmZvLnBhY2thZ2VOYW1lKQogICAgICAgIH0KICAgICAgICByZWN5Y2xlclZpZXcuYWRhcHRlciA9IGFkYXB0ZXIKCiAgICAgICAgdG9nZ2xlTW9kaWZpZWQuc2V0T25DaGVja2VkQ2hhbmdlTGlzdGVuZXIgeyBfLCBpc0NoZWNrZWQgLT4KICAgICAgICAgICAgc2hvd09ubHlNb2RpZmllZCA9IGlzQ2hlY2tlZAogICAgICAgICAgICBmaWx0ZXJBcHBMaXN0KCkKICAgICAgICB9CgoKICAgICAgICAvLyDwn5+pIEhvb2sgdXAgdGhlICJSZXNldCBBbGwgUmVzb2x1dGlvbnMiIGJ1dHRvbgogICAgICAgIHZhbCByZXNldEJ1dHRvbiA9IGZpbmRWaWV3QnlJZDxCdXR0b24+KFIuaWQucmVzZXRCdXR0b24pCgogICAgICAgIHJlc2V0QnV0dG9uLnNldE9uQ2xpY2tMaXN0ZW5lciB7CiAgICAgICAgICAgIHZhbCBwYWNrYWdlcyA9IFNjYWxlUHJlZnMuZ2V0QWxsUGFja2FnZXModGhpcykKCiAgICAgICAgICAgIGZvciAocGFja2FnZU5hbWUgaW4gcGFja2FnZXMpIHsKICAgICAgICAgICAgICAgIHZhbCBjb21tYW5kID0gImNtZCBnYW1lIGRvd25zY2FsZSBkaXNhYmxlICRwYWNrYWdlTmFtZSB8fCBjbWQgZ2FtZSBzZXQgLS1kb3duc2NhbGUgZGlzYWJsZSAkcGFja2FnZU5hbWUiCiAgICAgICAgICAgICAgICBydW5Bc1Jvb3QoY29tbWFuZCkKICAgICAgICAgICAgICAgIHJ1bkFzUm9vdCgiYW0gZm9yY2Utc3RvcCAkcGFja2FnZU5hbWUiKQogICAgICAgICAgICB9CgogICAgICAgICAgICAvLyBMaW1wYSBTaGFyZWRQcmVmZXJlbmNlcyBFIG8gYXJxdWl2byBkZSBjb25maWcgd29ybGQtcmVhZGFibGUKICAgICAgICAgICAgU2NhbGVQcmVmcy5jbGVhckFsbCh0aGlzKQoKICAgICAgICAgICAgVG9hc3QubWFrZVRleHQodGhpcywgIkFsbCByZXNvbHV0aW9ucyByZXNldCB0byBkZWZhdWx0IiwgVG9hc3QuTEVOR1RIX1NIT1JUKS5zaG93KCkKICAgICAgICB9CiAgICB9CgoKICAgIG92ZXJyaWRlIGZ1biBvbkNyZWF0ZU9wdGlvbnNNZW51KG1lbnU6IE1lbnUpOiBCb29sZWFuIHsKICAgICAgICBtZW51SW5mbGF0ZXIuaW5mbGF0ZShSLm1lbnUubWVudV9tYWluLCBtZW51KQogICAgICAgIHZhbCBzZWFyY2hJdGVtID0gbWVudS5maW5kSXRlbShSLmlkLmFjdGlvbl9zZWFyY2gpCiAgICAgICAgdmFsIHNlYXJjaFZpZXcgPSBzZWFyY2hJdGVtLmFjdGlvblZpZXcgYXMgU2VhcmNoVmlldwoKICAgICAgICBzZWFyY2hWaWV3LnNldE9uUXVlcnlUZXh0TGlzdGVuZXIob2JqZWN0IDogU2VhcmNoVmlldy5PblF1ZXJ5VGV4dExpc3RlbmVyIHsKICAgICAgICAgICAgb3ZlcnJpZGUgZnVuIG9uUXVlcnlUZXh0U3VibWl0KHF1ZXJ5OiBTdHJpbmc/KTogQm9vbGVhbiB7CiAgICAgICAgICAgICAgICAvLyBPcHRpb25hbDogeW91IGNvdWxkIGhpZGUgdGhlIGtleWJvYXJkIGhlcmUgaWYgeW91IHdhbnQKICAgICAgICAgICAgICAgIHJldHVybiB0cnVlCiAgICAgICAgICAgIH0KICAgICAgICAgICAgb3ZlcnJpZGUgZnVuIG9uUXVlcnlUZXh0Q2hhbmdlKG5ld1RleHQ6IFN0cmluZz8pOiBCb29sZWFuIHsKICAgICAgICAgICAgICAgIC8vIDEpIHVwZGF0ZSB5b3VyIHF1ZXJ5IHN0cmluZwogICAgICAgICAgICAgICAgY3VycmVudFF1ZXJ5ID0gbmV3VGV4dC5vckVtcHR5KCkKICAgICAgICAgICAgICAgIC8vIDIpIHJlLXJ1biB0aGUgZmlsdGVyCiAgICAgICAgICAgICAgICBmaWx0ZXJBcHBMaXN0KCkKICAgICAgICAgICAgICAgIHJldHVybiB0cnVlCiAgICAgICAgICAgIH0KICAgICAgICB9KQogICAgICAgIHJldHVybiB0cnVlCiAgICB9CgoKICAgIHByaXZhdGUgZnVuIGZpbHRlckFwcExpc3QoKSB7CiAgICAgICAgdmFyIHRlbXBMaXN0ID0gYWxsQXBwcwoKICAgICAgICAvLyAxKSBGaWx0ZXIg4oCcbW9kaWZpZWTigJ0gaWYgdGhlIHRvZ2dsZSBpcyBvbgogICAgICAgIGlmIChzaG93T25seU1vZGlmaWVkKSB7CiAgICAgICAgICAgIHRlbXBMaXN0ID0gdGVtcExpc3QuZmlsdGVyIHsgYXBwIC0+CiAgICAgICAgICAgICAgICBTY2FsZVByZWZzLmdldFNjYWxlKHRoaXMsIGFwcC5wYWNrYWdlTmFtZSkgIT0gMS4wZgogICAgICAgICAgICB9CiAgICAgICAgfQoKICAgICAgICAvLyAyKSBGaWx0ZXIgYnkgY3VycmVudFF1ZXJ5IChuYW1lIG9yIHBhY2thZ2UpCiAgICAgICAgaWYgKGN1cnJlbnRRdWVyeS5pc05vdEVtcHR5KCkpIHsKICAgICAgICAgICAgdmFsIGxvd2VyUSA9IGN1cnJlbnRRdWVyeS5sb3dlcmNhc2UoTG9jYWxlLmdldERlZmF1bHQoKSkKICAgICAgICAgICAgdGVtcExpc3QgPSB0ZW1wTGlzdC5maWx0ZXIgeyBhcHAgLT4KICAgICAgICAgICAgICAgIGFwcC5uYW1lLmxvd2VyY2FzZShMb2NhbGUuZ2V0RGVmYXVsdCgpKS5jb250YWlucyhsb3dlclEpCiAgICAgICAgICAgICAgICAgICAgICAgIHx8IGFwcC5wYWNrYWdlTmFtZS5sb3dlcmNhc2UoTG9jYWxlLmdldERlZmF1bHQoKSkuY29udGFpbnMobG93ZXJRKQogICAgICAgICAgICB9CiAgICAgICAgfQoKICAgICAgICAvLyAzKSBIYW5kIHRoZSBmaWx0ZXJlZCBsaXN0IHRvIHRoZSBhZGFwdGVyCiAgICAgICAgYWRhcHRlci5zdWJtaXRMaXN0KHRlbXBMaXN0KQogICAgfQoKCgogICAgcHJpdmF0ZSBmdW4gZ2V0VXNlckluc3RhbGxlZEFwcHMoKTogTGlzdDxBcHBJbmZvPiB7CiAgICAgICAgdmFsIHBtID0gcGFja2FnZU1hbmFnZXIKCiAgICAgICAgLy8gRklYIDM6IEdldCBBTEwgaW5zdGFsbGVkIHBhY2thZ2VzLCBub3QganVzdCBsYXVuY2hlciBhcHBzCiAgICAgICAgLy8gVGhpcyBpbmNsdWRlcyBhcHBzIHdpdGhvdXQgbGF1bmNoZXIgaWNvbnMgKGJyb3dzZXJzLCBzZXJ2aWNlcywgZXRjLikKICAgICAgICB2YWwgYWxsUGFja2FnZXMgPSBwbS5nZXRJbnN0YWxsZWRBcHBsaWNhdGlvbnMoUGFja2FnZU1hbmFnZXIuR0VUX01FVEFfREFUQSkKICAgICAgICAgICAgLmZpbHRlciB7IGFwcCAtPgogICAgICAgICAgICAgICAgLy8gRXhjbHVkZSBzeXN0ZW0gYXBwcwogICAgICAgICAgICAgICAgKGFwcC5mbGFncyBhbmQgQXBwbGljYXRpb25JbmZvLkZMQUdfU1lTVEVNKSA9PSAwICYmCiAgICAgICAgICAgICAgICAvLyBFeGNsdWRlIHRoaXMgbW9kdWxlIGl0c2VsZiBmcm9tIHRoZSBsaXN0CiAgICAgICAgICAgICAgICBhcHAucGFja2FnZU5hbWUgIT0gcGFja2FnZU5hbWUKICAgICAgICAgICAgfQogICAgICAgICAgICAuZGlzdGluY3RCeSB7IGl0LnBhY2thZ2VOYW1lIH0KCiAgICAgICAgcmV0dXJuIGFsbFBhY2thZ2VzLm1hcCB7IGFwcCAtPgogICAgICAgICAgICBBcHBJbmZvKAogICAgICAgICAgICAgICAgbmFtZSA9IHBtLmdldEFwcGxpY2F0aW9uTGFiZWwoYXBwKS50b1N0cmluZygpLAogICAgICAgICAgICAgICAgcGFja2FnZU5hbWUgPSBhcHAucGFja2FnZU5hbWUsCiAgICAgICAgICAgICAgICBpY29uID0gdHJ5IHsKICAgICAgICAgICAgICAgICAgICBwbS5nZXRBcHBsaWNhdGlvbkljb24oYXBwKQogICAgICAgICAgICAgICAgfSBjYXRjaCAoZTogRXhjZXB0aW9uKSB7CiAgICAgICAgICAgICAgICAgICAgcG0uZGVmYXVsdEFjdGl2aXR5SWNvbgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICApCiAgICAgICAgfS5zb3J0ZWRCeSB7IGl0Lm5hbWUubG93ZXJjYXNlKCkgfQogICAgfQoKICAgIHByaXZhdGUgZnVuIHNob3dSZXNvbHV0aW9uRGlhbG9nKHBhY2thZ2VOYW1lOiBTdHJpbmcpIHsKCgogICAgICAgIHZhbCBzYXZlZFNjYWxlID0gU2NhbGVQcmVmcy5nZXRTY2FsZSh0aGlzLCBwYWNrYWdlTmFtZSkKICAgICAgICB2YWwgbGF5b3V0ID0gTGluZWFyTGF5b3V0KHRoaXMpLmFwcGx5IHsKICAgICAgICAgICAgb3JpZW50YXRpb24gPSBMaW5lYXJMYXlvdXQuVkVSVElDQUwKICAgICAgICAgICAgc2V0UGFkZGluZyg1MCwgNDAsIDUwLCAxMCkKICAgICAgICB9CgogICAgICAgIHZhbCBzY2FsZVRleHQgPSBUZXh0Vmlldyh0aGlzKS5hcHBseSB7CiAgICAgICAgICAgIHRleHRTaXplID0gMThmCiAgICAgICAgICAgIHNldFBhZGRpbmcoMCwgMCwgMCwgMjApCiAgICAgICAgICAgIC8vIFNob3cgcGVyY2VudGFnZSAocHJlc2VydmluZyAyIGRlY2ltYWwgcHJlY2lzaW9uIGludGVybmFsbHkpCiAgICAgICAgICAgIHRleHQgPSAiU2NhbGU6ICR7KHNhdmVkU2NhbGUgKiAxMDApLnRvSW50KCl9JSIKICAgICAgICB9CgogICAgICAgIHZhbCBzbGlkZXIgPSBTbGlkZXIodGhpcykuYXBwbHkgewogICAgICAgICAgICB2YWx1ZUZyb20gPSAwLjNmCiAgICAgICAgICAgIHZhbHVlVG8gPSAxLjBmCiAgICAgICAgICAgIHN0ZXBTaXplID0gMC4wNWYgIC8vIEFsbG93cyAwLjk1LCAwLjg1LCBldGMuCiAgICAgICAgICAgIHZhbHVlID0gc2F2ZWRTY2FsZQogICAgICAgICAgICBpc1RpY2tWaXNpYmxlID0gdHJ1ZQogICAgICAgIH0KCiAgICAgICAgc2xpZGVyLmFkZE9uQ2hhbmdlTGlzdGVuZXIgeyBfLCB2YWx1ZSwgXyAtPgogICAgICAgICAgICB2YWwgcGVyY2VudGFnZSA9ICh2YWx1ZSAqIDEwMCkudG9JbnQoKQogICAgICAgICAgICBzY2FsZVRleHQudGV4dCA9ICJTY2FsZTogJHBlcmNlbnRhZ2UlIgogICAgICAgIH0KCiAgICAgICAgbGF5b3V0LmFkZFZpZXcoc2NhbGVUZXh0KQogICAgICAgIGxheW91dC5hZGRWaWV3KHNsaWRlcikKCiAgICAgICAgTWF0ZXJpYWxBbGVydERpYWxvZ0J1aWxkZXIodGhpcywgUi5zdHlsZS5NeVJvdW5kZWREaWFsb2cpCiAgICAgICAgICAgIC5zZXRUaXRsZSgiU2V0IFJlc29sdXRpb24gU2NhbGUiKQogICAgICAgICAgICAuc2V0VmlldyhsYXlvdXQpCiAgICAgICAgICAgIC5zZXRQb3NpdGl2ZUJ1dHRvbigiQXBwbHkiKSB7IF8sIF8gLT4KICAgICAgICAgICAgICAgIHZhciBzY2FsZSA9IFN0cmluZy5mb3JtYXQoTG9jYWxlLlVTLCAiJS4yZiIsIHNsaWRlci52YWx1ZSkudG9GbG9hdCgpCgogICAgICAgICAgICAgICAgLy8gSWYgdXNlciBzZWxlY3RlZCAwLjk1ICg5NSUpLCByb3VuZCBpdCBkb3duIHRvIDAuOSBhbmQgbm90aWZ5CiAgICAgICAgICAgICAgICBpZiAoc2NhbGUgPT0gMC45NWYpIHsKICAgICAgICAgICAgICAgICAgICBzY2FsZSA9IDAuOWYKICAgICAgICAgICAgICAgICAgICBUb2FzdC5tYWtlVGV4dCgKICAgICAgICAgICAgICAgICAgICAgICAgdGhpcywKICAgICAgICAgICAgICAgICAgICAgICAgIjk1JSBpcyBub3Qgc3VwcG9ydGVkLiBVc2luZyA5MCUgaW5zdGVhZC4iLAogICAgICAgICAgICAgICAgICAgICAgICBUb2FzdC5MRU5HVEhfU0hPUlQKICAgICAgICAgICAgICAgICAgICApLnNob3coKQogICAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAgIHZhbCBwZXJjZW50YWdlID0gKHNjYWxlICogMTAwKS50b0ludCgpCgogICAgICAgICAgICAgICAgdmFsIGNvbW1hbmQgPSBpZiAoc2NhbGUgPT0gMS4wZikgewogICAgICAgICAgICAgICAgICAgICJjbWQgZ2FtZSBkb3duc2NhbGUgZGlzYWJsZSAkcGFja2FnZU5hbWUgfHwgY21kIGdhbWUgc2V0IC0tZG93bnNjYWxlIGRpc2FibGUgJHBhY2thZ2VOYW1lIgogICAgICAgICAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgICAgICAgICAiY21kIGdhbWUgZG93bnNjYWxlICRzY2FsZSAkcGFja2FnZU5hbWUgfHwgY21kIGdhbWUgc2V0IC0tZG93bnNjYWxlICRzY2FsZSAkcGFja2FnZU5hbWUiCiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgdmFsIG1lc3NhZ2UgPSBpZiAoc2NhbGUgPT0gMS4wZikgewogICAgICAgICAgICAgICAgICAgICJSZXNvbHV0aW9uIHJlc2V0IHRvIGRlZmF1bHQgKDEwMCUpIgogICAgICAgICAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgICAgICAgICAiUmVzb2x1dGlvbiBjaGFuZ2VkIHRvICRwZXJjZW50YWdlJSIKICAgICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgICBTY2FsZVByZWZzLnNhdmVTY2FsZSh0aGlzLCBwYWNrYWdlTmFtZSwgc2NhbGUpCiAgICAgICAgICAgICAgICBhZGFwdGVyLm5vdGlmeURhdGFTZXRDaGFuZ2VkKCkKICAgICAgICAgICAgICAgIFRvYXN0Lm1ha2VUZXh0KHRoaXMsICJFeGVjdXRpbmc6ICRjb21tYW5kIiwgVG9hc3QuTEVOR1RIX1NIT1JUKS5zaG93KCkKICAgICAgICAgICAgICAgIFRvYXN0Lm1ha2VUZXh0KHRoaXMsIG1lc3NhZ2UsIFRvYXN0LkxFTkdUSF9TSE9SVCkuc2hvdygpCiAgICAgICAgICAgICAgICBydW5Bc1Jvb3QoY29tbWFuZCkKICAgICAgICAgICAgICAgIHJ1bkFzUm9vdCgiYW0gZm9yY2Utc3RvcCAkcGFja2FnZU5hbWUiKSAvLyBLaWxsIHRoZSBhcHAKICAgICAgICAgICAgICAgIHZhbCBhcHBOYW1lID0gYWxsQXBwcy5maW5kIHsgaXQucGFja2FnZU5hbWUgPT0gcGFja2FnZU5hbWUgfT8ubmFtZSA/OiBwYWNrYWdlTmFtZQogICAgICAgICAgICAgICAgVG9hc3QubWFrZVRleHQodGhpcywgIiRhcHBOYW1lIGhhcyBiZWVuIGZvcmNlLXN0b3BwZWQuIFBsZWFzZSByZWxhdW5jaCBpdCBtYW51YWxseS4iLCBUb2FzdC5MRU5HVEhfU0hPUlQpLnNob3coKQogICAgICAgICAgICB9CiAgICAgICAgICAgIC5zZXROZWdhdGl2ZUJ1dHRvbigiQ2FuY2VsIiwgbnVsbCkKICAgICAgICAgICAgLnNldE5ldXRyYWxCdXR0b24oIlJlc2V0IikgeyBfLCBfIC0+CiAgICAgICAgICAgICAgICB2YWwgY29tbWFuZCA9ICJjbWQgZ2FtZSBkb3duc2NhbGUgZGlzYWJsZSAkcGFja2FnZU5hbWUgfHwgY21kIGdhbWUgc2V0IC0tZG93bnNjYWxlIGRpc2FibGUgJHBhY2thZ2VOYW1lIgoKICAgICAgICAgICAgICAgIFNjYWxlUHJlZnMucmVtb3ZlU2NhbGUodGhpcywgcGFja2FnZU5hbWUpCiAgICAgICAgICAgICAgICBUb2FzdC5tYWtlVGV4dCh0aGlzLCAiUmVzb2x1dGlvbiByZXNldCB0byBkZWZhdWx0ICgxMDAlKSIsIFRvYXN0LkxFTkdUSF9TSE9SVCkuc2hvdygpCiAgICAgICAgICAgICAgICBydW5Bc1Jvb3QoY29tbWFuZCkKICAgICAgICAgICAgICAgIHJ1bkFzUm9vdCgiYW0gZm9yY2Utc3RvcCAkcGFja2FnZU5hbWUiKQogICAgICAgICAgICAgICAgdmFsIGFwcE5hbWUgPSBhbGxBcHBzLmZpbmQgeyBpdC5wYWNrYWdlTmFtZSA9PSBwYWNrYWdlTmFtZSB9Py5uYW1lID86IHBhY2thZ2VOYW1lCiAgICAgICAgICAgICAgICBUb2FzdC5tYWtlVGV4dCh0aGlzLCAiJGFwcE5hbWUgaGFzIGJlZW4gZm9yY2Utc3RvcHBlZC4gUGxlYXNlIHJlbGF1bmNoIGl0IG1hbnVhbGx5LiIsIFRvYXN0LkxFTkdUSF9TSE9SVCkuc2hvdygpCiAgICAgICAgICAgIH0KICAgICAgICAgICAgLnNob3coKQogICAgfQoKICAgIHByaXZhdGUgZnVuIHJ1bkFzUm9vdChjb21tYW5kOiBTdHJpbmcpIHsKICAgICAgICB0cnkgewogICAgICAgICAgICB2YWwgcHJvY2VzcyA9IFJ1bnRpbWUuZ2V0UnVudGltZSgpLmV4ZWMoInN1IikKICAgICAgICAgICAgdmFsIG9zID0gRGF0YU91dHB1dFN0cmVhbShwcm9jZXNzLm91dHB1dFN0cmVhbSkKICAgICAgICAgICAgb3Mud3JpdGVCeXRlcygiJGNvbW1hbmRcbiIpCiAgICAgICAgICAgIG9zLndyaXRlQnl0ZXMoImV4aXRcbiIpCiAgICAgICAgICAgIG9zLmZsdXNoKCkKICAgICAgICAgICAgb3MuY2xvc2UoKQogICAgICAgICAgICBwcm9jZXNzLndhaXRGb3IoKQogICAgICAgIH0gY2F0Y2ggKGU6IEV4Y2VwdGlvbikgewogICAgICAgICAgICBUb2FzdC5tYWtlVGV4dCh0aGlzLCAiUm9vdCBmYWlsZWQ6ICR7ZS5tZXNzYWdlfSIsIFRvYXN0LkxFTkdUSF9MT05HKS5zaG93KCkKICAgICAgICB9CiAgICB9Cn0K' | base64 -d > app/src/main/java/com/game/reschange/MainActivity.kt
-
-      # ── PATCH 4 — module_scope.xml ─────────────────────────────
-      # Mantido para compatibilidade maxima com versoes do LSPosed.
-      - name: Patch 4 — module_scope.xml
-        run: echo 'PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPHJlc291cmNlcz4KICAgIDxzdHJpbmctYXJyYXkgbmFtZT0ibW9kdWxlX3Njb3BlIj4KICAgICAgICA8aXRlbT5hbmRyb2lkPC9pdGVtPgogICAgPC9zdHJpbmctYXJyYXk+CjwvcmVzb3VyY2VzPg==' | base64 -d > app/src/main/res/values/module_scope.xml
-
-      - name: Verificar patches
-        run: |
-          python3 - << 'EOF'
-          import sys
-          errors = []
-          with open('app/src/main/java/com/game/reschange/XposedInit.java') as f: x = f.read()
-          with open('app/src/main/java/com/game/reschange/ScalePrefs.kt')   as f: s = f.read()
-          with open('app/src/main/java/com/game/reschange/MainActivity.kt') as f: m = f.read()
-          x_code = '\n'.join(l for l in x.split('\n') if not l.strip().startswith('//'))
-          checks = [
-              ('getDisplayMetrics'        in x_code,  'XposedInit: hook DisplayMetrics'),
-              ('widthPixels'              in x_code,  'XposedInit: widthPixels'),
-              ('heightPixels'             in x_code,  'XposedInit: heightPixels'),
-              ('CATEGORY_GAME'        not in x_code,  'XposedInit: sem CATEGORY_GAME no codigo'),
-              ('ApplicationInfo'      not in x_code,  'XposedInit: sem ApplicationInfo'),
-              ('writeConfigFile'          in s,       'ScalePrefs: writeConfigFile'),
-              ('removeScale'              in s,       'ScalePrefs: removeScale'),
-              ('clearAll'                 in s,       'ScalePrefs: clearAll'),
-              ('getInstalledApplications' in m,       'MainActivity: getInstalledApplications'),
-              ('ScalePrefs.clearAll'      in m,       'MainActivity: ScalePrefs.clearAll'),
-              ('ScalePrefs.removeScale'   in m,       'MainActivity: ScalePrefs.removeScale'),
-          ]
-          for ok, label in checks:
-              print(('OK  ' if ok else 'FAIL'), label)
-              if not ok: errors.append(label)
-          if errors:
-              print('\nFalhas:', errors)
-              sys.exit(1)
-          print('\nTodos os patches verificados!')
-          EOF
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -85,15 +22,459 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Permissao gradlew
+      - name: Create XposedInit.java with DisplayMetrics Hook
+        run: |
+          mkdir -p app/src/main/java/com/game/reschange
+          cat > app/src/main/java/com/game/reschange/XposedInit.java << 'XPOSED_EOF'
+          package com.game.reschange;
+
+          import android.content.SharedPreferences;
+          import android.util.DisplayMetrics;
+          import de.robv.android.xposed.IXposedHookLoadPackage;
+          import de.robv.android.xposed.XposedBridge;
+          import de.robv.android.xposed.XposedHelpers;
+          import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
+          import de.robv.android.xposed.XC_MethodHook;
+          import java.io.BufferedReader;
+          import java.io.File;
+          import java.io.FileReader;
+          import java.util.HashMap;
+          import java.util.Map;
+
+          public class XposedInit implements IXposedHookLoadPackage {
+              private static Map<String, Float> scaleMap = new HashMap<>();
+              private static long lastReadTime = 0;
+
+              @Override
+              public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
+                  hookDisplayMetrics(lpparam);
+              }
+
+              private void hookDisplayMetrics(final LoadPackageParam lpparam) throws Throwable {
+                  try {
+                      Class<?> displayClass = XposedHelpers.findClass(
+                              "android.view.Display",
+                              lpparam.classLoader
+                      );
+
+                      // Hook getRealMetrics
+                      XposedHelpers.findAndHookMethod(
+                              displayClass,
+                              "getRealMetrics",
+                              DisplayMetrics.class,
+                              new XC_MethodHook() {
+                                  @Override
+                                  protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                      DisplayMetrics metrics = (DisplayMetrics) param.args[0];
+                                      float scale = getScaleForPackage(lpparam.packageName);
+
+                                      if (scale != 1.0f) {
+                                          metrics.widthPixels = (int) (metrics.widthPixels * scale);
+                                          metrics.heightPixels = (int) (metrics.heightPixels * scale);
+                                          metrics.density *= scale;
+                                          metrics.densityDpi = (int) (metrics.densityDpi * scale);
+                                          metrics.xdpi *= scale;
+                                          metrics.ydpi *= scale;
+                                      }
+                                  }
+                              }
+                      );
+
+                      // Hook getMetrics
+                      XposedHelpers.findAndHookMethod(
+                              displayClass,
+                              "getMetrics",
+                              DisplayMetrics.class,
+                              new XC_MethodHook() {
+                                  @Override
+                                  protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                      DisplayMetrics metrics = (DisplayMetrics) param.args[0];
+                                      float scale = getScaleForPackage(lpparam.packageName);
+
+                                      if (scale != 1.0f) {
+                                          metrics.widthPixels = (int) (metrics.widthPixels * scale);
+                                          metrics.heightPixels = (int) (metrics.heightPixels * scale);
+                                          metrics.density *= scale;
+                                          metrics.densityDpi = (int) (metrics.densityDpi * scale);
+                                          metrics.xdpi *= scale;
+                                          metrics.ydpi *= scale;
+                                      }
+                                  }
+                              }
+                      );
+
+                  } catch (Throwable t) {
+                      XposedBridge.log("ResChange: Error hooking DisplayMetrics: " + t);
+                  }
+              }
+
+              private float getScaleForPackage(String packageName) {
+                  try {
+                      // Reload cache a cada 2 segundos para detectar mudanças
+                      long currentTime = System.currentTimeMillis();
+                      if (currentTime - lastReadTime > 2000) {
+                          loadScalesFromFile();
+                          lastReadTime = currentTime;
+                      }
+
+                      return scaleMap.getOrDefault(packageName, 1.0f);
+                  } catch (Exception e) {
+                      XposedBridge.log("ResChange: Error getting scale: " + e);
+                      return 1.0f;
+                  }
+              }
+
+              private void loadScalesFromFile() {
+                  try {
+                      File configFile = new File("/data/local/tmp/reschange_config.json");
+                      if (!configFile.exists()) {
+                          return;
+                      }
+
+                      StringBuilder jsonContent = new StringBuilder();
+                      try (BufferedReader br = new BufferedReader(new FileReader(configFile))) {
+                          String line;
+                          while ((line = br.readLine()) != null) {
+                              jsonContent.append(line);
+                          }
+                      }
+
+                      // Parse simples de JSON
+                      String json = jsonContent.toString();
+                      scaleMap.clear();
+
+                      // Encontra padrão "package":"0.75"
+                      int pos = 0;
+                      while ((pos = json.indexOf("\"", pos)) != -1) {
+                          int packageStart = pos + 1;
+                          int packageEnd = json.indexOf("\"", packageStart);
+                          if (packageEnd == -1) break;
+
+                          String pkg = json.substring(packageStart, packageEnd);
+                          pos = packageEnd + 1;
+
+                          // Procura pelo valor
+                          int colonPos = json.indexOf(":", packageEnd);
+                          if (colonPos == -1) continue;
+
+                          int valueStart = colonPos + 1;
+                          int valueEnd = json.indexOf(",", valueStart);
+                          if (valueEnd == -1) {
+                              valueEnd = json.indexOf("}", valueStart);
+                          }
+
+                          String valueStr = json.substring(valueStart, valueEnd).trim();
+                          try {
+                              float scale = Float.parseFloat(valueStr);
+                              scaleMap.put(pkg, scale);
+                          } catch (NumberFormatException e) {
+                              // Ignore
+                          }
+
+                          pos = valueEnd;
+                      }
+                  } catch (Exception e) {
+                      XposedBridge.log("ResChange: Error loading config: " + e);
+                  }
+              }
+          }
+          XPOSED_EOF
+
+      - name: Create ScalePrefs.kt with File Persistence
+        run: |
+          cat > app/src/main/java/com/game/reschange/ScalePrefs.kt << 'PREFS_EOF'
+          package com.game.reschange
+
+          import android.content.Context
+          import androidx.core.content.edit
+          import java.io.File
+          import org.json.JSONObject
+
+          object ScalePrefs {
+              private const val PREF_NAME = "scale_prefs"
+              private const val CONFIG_FILE = "/data/local/tmp/reschange_config.json"
+
+              fun saveScale(context: Context, packageName: String, scale: Float) {
+                  // Salva em SharedPreferences
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .edit {
+                          putFloat(packageName, scale)
+                      }
+
+                  // Salva em arquivo JSON para o módulo Xposed ler
+                  writeConfigFile(context)
+              }
+
+              fun removeScale(context: Context, packageName: String) {
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .edit {
+                          remove(packageName)
+                      }
+
+                  writeConfigFile(context)
+              }
+
+              fun clearAll(context: Context) {
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .edit { clear() }
+
+                  writeConfigFile(context)
+              }
+
+              fun getScale(context: Context, packageName: String): Float {
+                  return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .getFloat(packageName, 1.0f)
+              }
+
+              fun getAllPackages(context: Context): Set<String> {
+                  return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys
+              }
+
+              private fun writeConfigFile(context: Context) {
+                  try {
+                      val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      val json = JSONObject()
+
+                      for ((key, value) in prefs.all) {
+                          if (value is Float && value != 1.0f) {
+                              json.put(key, value)
+                          }
+                      }
+
+                      val configFile = File(CONFIG_FILE)
+                      configFile.writeText(json.toString())
+                      
+                      // chmod 644 para SELinux
+                      Runtime.getRuntime().exec(arrayOf("chmod", "644", CONFIG_FILE)).waitFor()
+                  } catch (e: Exception) {
+                      e.printStackTrace()
+                  }
+              }
+          }
+          PREFS_EOF
+
+      - name: Create Updated MainActivity.kt
+        run: |
+          cat > app/src/main/java/com/game/reschange/MainActivity.kt << 'MAIN_EOF'
+          package com.game.reschange
+
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.ApplicationInfo
+          import android.content.pm.PackageManager
+          import android.os.Bundle
+          import android.view.Menu
+          import android.view.MenuItem
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import android.widget.Toast
+          import com.google.android.material.slider.Slider
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.recyclerview.widget.LinearLayoutManager
+          import androidx.recyclerview.widget.RecyclerView
+          import com.google.android.material.dialog.MaterialAlertDialogBuilder
+          import com.google.android.material.switchmaterial.SwitchMaterial
+          import androidx.core.content.edit
+          import androidx.appcompat.widget.SearchView
+          import androidx.core.view.WindowCompat
+          import java.util.Locale
+
+          class MainActivity : AppCompatActivity() {
+
+              private lateinit var recyclerView: RecyclerView
+              private lateinit var adapter: AppListAdapter
+              private lateinit var toggleModified: SwitchMaterial
+
+              private lateinit var allApps: List<AppInfo>
+
+              private var showOnlyModified = false
+              private var currentQuery: String = ""
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+
+                  WindowCompat.setDecorFitsSystemWindows(window, false)
+
+                  setContentView(R.layout.activity_main)
+                  setSupportActionBar(findViewById(R.id.myToolbar))
+
+                  recyclerView = findViewById(R.id.appList)
+                  toggleModified = findViewById(R.id.toggleModified)
+                  recyclerView.layoutManager = LinearLayoutManager(this)
+
+                  allApps = getAllInstalledApps()
+                  adapter = AppListAdapter(allApps) { appInfo ->
+                      showResolutionDialog(appInfo.packageName)
+                  }
+                  recyclerView.adapter = adapter
+
+                  toggleModified.setOnCheckedChangeListener { _, isChecked ->
+                      showOnlyModified = isChecked
+                      filterAppList()
+                  }
+
+                  val resetButton = findViewById<Button>(R.id.resetButton)
+                  resetButton.setOnClickListener {
+                      MaterialAlertDialogBuilder(this)
+                          .setTitle("Reset All Resolutions?")
+                          .setMessage("This will reset all app resolutions to default.")
+                          .setPositiveButton("Reset") { _, _ ->
+                              ScalePrefs.clearAll(this)
+                              adapter.notifyDataSetChanged()
+                              Toast.makeText(this, "All resolutions reset", Toast.LENGTH_SHORT).show()
+                          }
+                          .setNegativeButton("Cancel", null)
+                          .show()
+                  }
+              }
+
+              override fun onCreateOptionsMenu(menu: Menu): Boolean {
+                  menuInflater.inflate(R.menu.menu_main, menu)
+                  val searchItem = menu.findItem(R.id.action_search)
+                  val searchView = searchItem.actionView as SearchView
+
+                  searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+                      override fun onQueryTextSubmit(query: String?): Boolean = true
+                      override fun onQueryTextChange(newText: String?): Boolean {
+                          currentQuery = newText.orEmpty()
+                          filterAppList()
+                          return true
+                      }
+                  })
+                  return true
+              }
+
+              private fun filterAppList() {
+                  var tempList = allApps
+
+                  if (showOnlyModified) {
+                      tempList = tempList.filter { app ->
+                          ScalePrefs.getScale(this, app.packageName) != 1.0f
+                      }
+                  }
+
+                  if (currentQuery.isNotEmpty()) {
+                      val lowerQ = currentQuery.lowercase(Locale.getDefault())
+                      tempList = tempList.filter { app ->
+                          app.name.lowercase(Locale.getDefault()).contains(lowerQ)
+                                  || app.packageName.lowercase(Locale.getDefault()).contains(lowerQ)
+                      }
+                  }
+
+                  adapter.submitList(tempList)
+              }
+
+              private fun getAllInstalledApps(): List<AppInfo> {
+                  val pm = packageManager
+                  val allApps = mutableListOf<AppInfo>()
+
+                  try {
+                      val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                      for (app in packages) {
+                          if ((app.flags and ApplicationInfo.FLAG_SYSTEM) == 0) {
+                              val name = pm.getApplicationLabel(app).toString()
+                              val icon = pm.getApplicationIcon(app)
+                              allApps.add(AppInfo(name, app.packageName, icon))
+                          }
+                      }
+                  } catch (e: Exception) {
+                      Toast.makeText(this, "Error loading apps: ${e.message}", Toast.LENGTH_SHORT).show()
+                  }
+
+                  return allApps.sortedBy { it.name.lowercase() }
+              }
+
+              private fun showResolutionDialog(packageName: String) {
+                  val savedScale = ScalePrefs.getScale(this, packageName)
+                  val layout = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(50, 40, 50, 10)
+                  }
+
+                  val scaleText = TextView(this).apply {
+                      textSize = 18f
+                      setPadding(0, 0, 0, 20)
+                      text = "Scale: ${(savedScale * 100).toInt()}%"
+                  }
+
+                  val slider = Slider(this).apply {
+                      valueFrom = 0.3f
+                      valueTo = 1.0f
+                      stepSize = 0.05f
+                      value = savedScale
+                      isTickVisible = true
+                  }
+
+                  slider.addOnChangeListener { _, value, _ ->
+                      val percentage = (value * 100).toInt()
+                      scaleText.text = "Scale: $percentage%"
+                  }
+
+                  layout.addView(scaleText)
+                  layout.addView(slider)
+
+                  MaterialAlertDialogBuilder(this, R.style.MyRoundedDialog)
+                      .setTitle("Set Resolution Scale")
+                      .setView(layout)
+                      .setPositiveButton("Apply") { _, _ ->
+                          var scale = String.format(Locale.US, "%.2f", slider.value).toFloat()
+
+                          if (scale == 0.95f) {
+                              scale = 0.9f
+                              Toast.makeText(this, "95% not supported. Using 90%.", Toast.LENGTH_SHORT).show()
+                          }
+
+                          val percentage = (scale * 100).toInt()
+                          ScalePrefs.saveScale(this, packageName, scale)
+                          adapter.notifyDataSetChanged()
+
+                          val message = if (scale == 1.0f) {
+                              "Resolution reset to default (100%)"
+                          } else {
+                              "Resolution changed to $percentage%"
+                          }
+
+                          Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                          Toast.makeText(this, "Reopen $packageName to apply changes", Toast.LENGTH_SHORT).show()
+                      }
+                      .setNegativeButton("Cancel", null)
+                      .setNeutralButton("Reset") { _, _ ->
+                          ScalePrefs.removeScale(this, packageName)
+                          adapter.notifyDataSetChanged()
+                          Toast.makeText(this, "Resolution reset to default", Toast.LENGTH_SHORT).show()
+                      }
+                      .show()
+              }
+          }
+          MAIN_EOF
+
+      - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ResChange-DisplayMetrics-${{ github.sha }}
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/release/
           retention-days: 30
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ResChange DisplayMetrics ${{ github.ref }}
+          body: |
+            ## ResChange with DisplayMetrics Hook
+            - ✅ Hook DisplayMetrics para redimensionar apps
+            - ✅ Funciona com QUALQUER app (não só jogos)
+            - ✅ Configurações salvas automaticamente
+            - ✅ Baseado na abordagem XposedAppSettings (rovo89)
+          draft: false
+          prerelease: false
