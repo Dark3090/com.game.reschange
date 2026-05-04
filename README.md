@@ -1,5 +1,5 @@
 ## GameResChange (Fork)
-Este é um fork do projeto original (GameResChange) [https://github.com/Xposed-Modules-Repo/com.game.reschange] criado por danmgk. Todo o crédito pelo conceito e código base pertence ao autor original.
+Este é um fork do projeto original [GameResChange](https://github.com/Xposed-Modules-Repo/com.game.reschange) criado por danmgk. Todo o crédito pelo conceito e código base pertence ao autor original.
 Change the resolution of any app/game on Android 13+
 ## O que foi adicionado neste fork? 
 Dual Operation Mode — Default Mode (cmd game downscale) e Alternative Mode (device_config game_overlay)
