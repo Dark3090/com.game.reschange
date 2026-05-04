@@ -1,5 +1,4 @@
-
-name: Build ResChange — Dual Mode + Force Game Category
+name: Build ResChange — Force Game Category
 
 on:
   workflow_dispatch:
@@ -16,46 +15,113 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Clonar codigo fonte original
+      - name: Clone upstream source
         run: |
           git clone https://github.com/Xposed-Modules-Repo/com.game.reschange source
           cp -r source/. .
           rm -rf source
 
-      - name: Add Force Game Category support
+      - name: Patch source for Force Game Category
         shell: bash
         run: |
           python3 <<'PY'
           from pathlib import Path
           from textwrap import dedent
 
-          def write(path: str, content: str) -> None:
-              p = Path(path)
-              p.parent.mkdir(parents=True, exist_ok=True)
-              p.write_text(dedent(content).lstrip(), encoding="utf-8")
+          ROOT = Path('.')
 
-          write("app/src/main/java/com/game/reschange/ForceGamePrefs.kt", r'''
+          def write(path: str, content: str) -> None:
+              p = ROOT / path
+              p.parent.mkdir(parents=True, exist_ok=True)
+              p.write_text(dedent(content).lstrip(), encoding='utf-8')
+
+          write('app/src/main/java/com/game/reschange/ScalePrefs.kt', r'''
           package com.game.reschange
 
           import android.content.Context
           import androidx.core.content.edit
+          import java.io.DataOutputStream
           import java.io.File
+          import java.util.Locale
 
-          /**
-           * Preferencias para "Force Game Category".
-           *
-           * A UI guarda o estado no SharedPreferences e também grava um arquivo
-           * world-readable em /data/local/tmp/reschange_force_games.txt para o XposedInit
-           * conseguir ler o estado a partir do system_server.
-           */
+          object ScalePrefs {
+              private const val PREF_NAME = "scale_prefs"
+              private const val SCALE_FILE = "/data/local/tmp/reschange_config.txt"
+
+              fun saveScale(context: Context, packageName: String, scale: Float) {
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .edit { putFloat(packageName, scale) }
+                  syncFile(context)
+              }
+
+              fun removeScale(context: Context, packageName: String) {
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .edit { remove(packageName) }
+                  syncFile(context)
+              }
+
+              fun clearAll(context: Context) {
+                  context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .edit { clear() }
+                  syncFile(context)
+              }
+
+              fun getAllPackages(context: Context): Set<String> {
+                  return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys
+              }
+
+              fun getScale(context: Context, packageName: String): Float {
+                  return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      .getFloat(packageName, 1.0f)
+              }
+
+              private fun syncFile(context: Context) {
+                  try {
+                      val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                      val lines = prefs.all.entries
+                          .mapNotNull { (pkg, value) ->
+                              val scale = (value as? Float) ?: return@mapNotNull null
+                              if (scale < 1.0f) {
+                                  "${pkg}=${String.format(Locale.US, "%.2f", scale)}"
+                              } else {
+                                  null
+                              }
+                          }
+                          .sorted()
+                          .joinToString("\n")
+
+                      val script = buildString {
+                          append("cat <<'EOF' > '")
+                          append(SCALE_FILE)
+                          append("'\n")
+                          append(lines)
+                          append("\nEOF\n")
+                          append("chmod 644 '")
+                          append(SCALE_FILE)
+                          append("'\n")
+                      }
+
+                      Runtime.getRuntime().exec(arrayOf("su", "-c", script)).waitFor()
+                  } catch (_: Exception) {
+                  }
+              }
+          }
+          ''')
+
+          write('app/src/main/java/com/game/reschange/ForceGamePrefs.kt', r'''
+          package com.game.reschange
+
+          import android.content.Context
+          import androidx.core.content.edit
+
           object ForceGamePrefs {
               private const val PREF_NAME = "force_game_prefs"
-              const val CONFIG_FILE = "/data/local/tmp/reschange_force_games.txt"
+              private const val FORCE_FILE = "/data/local/tmp/reschange_force_games.txt"
 
               fun saveForce(context: Context, packageName: String, enabled: Boolean) {
                   context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
                       .edit { putBoolean(packageName, enabled) }
-                  writeConfigFile(context)
+                  syncFile(context)
               }
 
               fun isForced(context: Context, packageName: String): Boolean {
@@ -70,41 +136,50 @@ jobs:
               fun removeForce(context: Context, packageName: String) {
                   context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
                       .edit { remove(packageName) }
-                  writeConfigFile(context)
+                  syncFile(context)
               }
 
               fun clearAll(context: Context) {
                   context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
                       .edit { clear() }
-                  writeConfigFile(context)
+                  syncFile(context)
               }
 
-              private fun writeConfigFile(context: Context) {
+              private fun syncFile(context: Context) {
                   try {
                       val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                      val lines = prefs.all
-                          .filterValues { it == true }
-                          .keys
+                      val lines = prefs.all.entries
+                          .filter { (_, value) -> value == true }
+                          .map { (pkg, _) -> pkg }
                           .sorted()
                           .joinToString("\n")
 
-                      File(CONFIG_FILE).writeText(lines)
-                      Runtime.getRuntime()
-                          .exec(arrayOf("su", "-c", "chmod 644 $CONFIG_FILE"))
-                          .waitFor()
+                      val script = buildString {
+                          append("cat <<'EOF' > '")
+                          append(FORCE_FILE)
+                          append("'\n")
+                          append(lines)
+                          append("\nEOF\n")
+                          append("chmod 644 '")
+                          append(FORCE_FILE)
+                          append("'\n")
+                      }
+
+                      Runtime.getRuntime().exec(arrayOf("su", "-c", script)).waitFor()
                   } catch (_: Exception) {
                   }
               }
           }
           ''')
 
-          write("app/src/main/java/com/game/reschange/XposedInit.java", r'''
+          write('app/src/main/java/com/game/reschange/XposedInit.java', r'''
           package com.game.reschange;
 
+          import android.content.Context;
           import android.content.pm.ApplicationInfo;
+          import android.content.pm.PackageManager;
 
           import java.io.BufferedReader;
-          import java.io.DataOutputStream;
           import java.io.File;
           import java.io.FileReader;
 
@@ -116,69 +191,43 @@ jobs:
 
           public class XposedInit implements IXposedHookLoadPackage {
 
-              private static final String CONFIG_FILE = "/data/local/tmp/reschange_config.txt";
-              private static final String FORCE_FILE   = "/data/local/tmp/reschange_force_games.txt";
-              private static final String MODE_FILE    = "/data/local/tmp/reschange_mode.txt";
+              private static final String SCALE_FILE = "/data/local/tmp/reschange_config.txt";
+              private static final String FORCE_FILE = "/data/local/tmp/reschange_force_games.txt";
 
               @Override
               public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
+                  XposedBridge.hookAllMethods(
+                          XposedHelpers.findClass("android.app.Application", lpparam.classLoader),
+                          "onCreate",
+                          new XC_MethodHook() {
+                              @Override
+                              protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                                  if (!(param.thisObject instanceof Context)) return;
 
-                  // system_server: decide se o app deve ser tratado como game
-                  if ("android".equals(lpparam.packageName)) {
-                      XposedBridge.hookAllMethods(
-                              XposedHelpers.findClass(
-                                      "com.android.server.pm.PackageManagerService",
-                                      lpparam.classLoader),
-                              "getApplicationInfo",
-                              new XC_MethodHook() {
-                                  @Override
-                                  protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                                      ApplicationInfo info = (ApplicationInfo) param.getResult();
-                                      if (info == null) return;
+                                  PackageManager pm = ((Context) param.thisObject).getPackageManager();
+                                  Class<?> pmClass = pm.getClass();
 
-                                      if (isGameTarget(info.packageName)) {
-                                          info.category = ApplicationInfo.CATEGORY_GAME;
-                                          param.setResult(info);
+                                  XC_MethodHook hook = new XC_MethodHook() {
+                                      @Override
+                                      protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                          Object result = param.getResult();
+                                          if (!(result instanceof ApplicationInfo)) return;
+
+                                          ApplicationInfo info = (ApplicationInfo) result;
+                                          if (info.packageName == null) return;
+
+                                          if (isGameTarget(info.packageName)) {
+                                              info.category = ApplicationInfo.CATEGORY_GAME;
+                                              param.setResult(info);
+                                          }
                                       }
-                                  }
-                              });
+                                  };
 
-                      XposedBridge.hookAllMethods(
-                              XposedHelpers.findClass(
-                                      "com.android.server.pm.PackageManagerService",
-                                      lpparam.classLoader),
-                              "getApplicationInfoAsUser",
-                              new XC_MethodHook() {
-                                  @Override
-                                  protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                                      ApplicationInfo info = (ApplicationInfo) param.getResult();
-                                      if (info == null) return;
-
-                                      if (isGameTarget(info.packageName)) {
-                                          info.category = ApplicationInfo.CATEGORY_GAME;
-                                          param.setResult(info);
-                                      }
-                                  }
-                              });
-
-                      return;
-                  }
-
-                  // processo do app: reaplica a resolução sempre que abrir
-                  final String pkg = lpparam.packageName;
-                  final float scale = readScale(pkg);
-
-                  if (scale > 0f && scale < 1.0f) {
-                      XposedBridge.hookAllMethods(
-                              XposedHelpers.findClass("android.app.Application", lpparam.classLoader),
-                              "onCreate",
-                              new XC_MethodHook() {
-                                  @Override
-                                  protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                                      applyScale(pkg, scale);
-                                  }
-                              });
-                  }
+                                  XposedBridge.hookAllMethods(pmClass, "getApplicationInfo", hook);
+                                  XposedBridge.hookAllMethods(pmClass, "getApplicationInfoAsUser", hook);
+                              }
+                          }
+                  );
               }
 
               private boolean isGameTarget(String pkg) {
@@ -192,8 +241,7 @@ jobs:
                   try (BufferedReader br = new BufferedReader(new FileReader(file))) {
                       String line;
                       while ((line = br.readLine()) != null) {
-                          line = line.trim();
-                          if (line.equals(pkg)) return true;
+                          if (pkg.equals(line.trim())) return true;
                       }
                   } catch (Exception ignored) {
                   }
@@ -201,7 +249,7 @@ jobs:
               }
 
               private float readScale(String pkg) {
-                  File file = new File(CONFIG_FILE);
+                  File file = new File(SCALE_FILE);
                   if (!file.exists()) return 1.0f;
 
                   try (BufferedReader br = new BufferedReader(new FileReader(file))) {
@@ -209,365 +257,18 @@ jobs:
                       while ((line = br.readLine()) != null) {
                           line = line.trim();
                           if (line.startsWith(pkg + "=")) {
-                              return Float.parseFloat(line.split("=", 2)[1].trim());
+                              String value = line.split("=", 2)[1].trim();
+                              return Float.parseFloat(value);
                           }
                       }
                   } catch (Exception ignored) {
                   }
                   return 1.0f;
               }
-
-              private String readMode() {
-                  File file = new File(MODE_FILE);
-                  if (!file.exists()) return "default";
-
-                  try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-                      String mode = br.readLine();
-                      if (mode != null) return mode.trim().toLowerCase();
-                  } catch (Exception ignored) {
-                  }
-                  return "default";
-              }
-
-              private void applyScale(String pkg, float scale) {
-                  String cmd;
-                  String scaleStr = String.format(java.util.Locale.US, "%.2f", scale);
-
-                  if ("alternative".equals(readMode())) {
-                      cmd = "device_config put game_overlay " + pkg +
-                              " mode=2,downscaleFactor=" + scaleStr + ":mode=3,downscaleFactor=" + scaleStr;
-                  } else {
-                      cmd = "cmd game downscale " + scaleStr + " " + pkg + " 2>/dev/null; " +
-                              "cmd game set --downscale " + scaleStr + " " + pkg + " 2>/dev/null";
-                  }
-
-                  try {
-                      Process p = Runtime.getRuntime().exec("su");
-                      DataOutputStream os = new DataOutputStream(p.getOutputStream());
-                      os.writeBytes(cmd + "\n");
-                      os.writeBytes("exit\n");
-                      os.flush();
-                      os.close();
-                      p.waitFor();
-                  } catch (Exception ignored) {
-                  }
-              }
           }
           ''')
 
-          write("app/src/main/java/com/game/reschange/MainActivity.kt", r'''
-          package com.game.reschange
-
-          import android.content.Intent
-          import android.content.pm.ApplicationInfo
-          import android.content.pm.PackageManager
-          import android.os.Bundle
-          import android.view.Menu
-          import android.view.MenuItem
-          import android.widget.Button
-          import android.widget.LinearLayout
-          import android.widget.TextView
-          import android.widget.Toast
-          import androidx.appcompat.app.AppCompatActivity
-          import androidx.appcompat.widget.SearchView
-          import androidx.core.view.WindowCompat
-          import androidx.recyclerview.widget.LinearLayoutManager
-          import androidx.recyclerview.widget.RecyclerView
-          import com.google.android.material.dialog.MaterialAlertDialogBuilder
-          import com.google.android.material.slider.Slider
-          import com.google.android.material.switchmaterial.SwitchMaterial
-          import com.google.android.material.tabs.TabLayout
-          import java.io.DataOutputStream
-          import java.util.Locale
-
-          class MainActivity : AppCompatActivity() {
-
-              private lateinit var recyclerView: RecyclerView
-              private lateinit var adapter: AppListAdapter
-              private lateinit var toggleModified: SwitchMaterial
-              private lateinit var tabs: TabLayout
-              private lateinit var allApps: List<AppInfo>
-
-              private var showOnlyModified = false
-              private var currentQuery: String = ""
-              private var currentTab = TAB_COMPATIBLE
-
-              companion object {
-                  private const val TAB_COMPATIBLE = 0
-                  private const val TAB_INCOMPATIBLE = 1
-              }
-
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  WindowCompat.setDecorFitsSystemWindows(window, false)
-                  setContentView(R.layout.activity_main)
-                  setSupportActionBar(findViewById(R.id.myToolbar))
-
-                  recyclerView = findViewById(R.id.appList)
-                  toggleModified = findViewById(R.id.toggleModified)
-                  tabs = findViewById(R.id.categoryTabs)
-
-                  recyclerView.layoutManager = LinearLayoutManager(this)
-
-                  allApps = getUserInstalledApps()
-                  adapter = AppListAdapter(emptyList()) { appInfo ->
-                      showResolutionDialog(appInfo.packageName)
-                  }
-                  recyclerView.adapter = adapter
-
-                  tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-                      override fun onTabSelected(tab: TabLayout.Tab?) {
-                          currentTab = tab?.position ?: TAB_COMPATIBLE
-                          filterAppList()
-                      }
-
-                      override fun onTabUnselected(tab: TabLayout.Tab?) = Unit
-                      override fun onTabReselected(tab: TabLayout.Tab?) {
-                          filterAppList()
-                      }
-                  })
-
-                  toggleModified.setOnCheckedChangeListener { _, isChecked ->
-                      showOnlyModified = isChecked
-                      filterAppList()
-                  }
-
-                  findViewById<Button>(R.id.resetButton).setOnClickListener {
-                      val scalePackages = ResChangePrefs.getAllPackages(this)
-                      for (pkg in scalePackages) {
-                          runAsRoot(buildDisableCommand(pkg))
-                          runAsRoot("am force-stop $pkg")
-                      }
-
-                      val forcedPackages = ForceGamePrefs.getAllPackages(this)
-                      for (pkg in forcedPackages) {
-                          ForceGamePrefs.removeForce(this, pkg)
-                          runAsRoot("am force-stop $pkg")
-                      }
-
-                      ResChangePrefs.clearAll(this)
-                      ForceGamePrefs.clearAll(this)
-                      filterAppList()
-                      Toast.makeText(this, "All changes reset", Toast.LENGTH_SHORT).show()
-                  }
-
-                  findViewById<TextView>(R.id.compatHint).text =
-                      "Compatíveis = apps com resolução alterada ou Force Game Category."
-                  filterAppList()
-              }
-
-              override fun onCreateOptionsMenu(menu: Menu): Boolean {
-                  menuInflater.inflate(R.menu.menu_main, menu)
-                  val searchItem = menu.findItem(R.id.action_search)
-                  val searchView = searchItem?.actionView as? SearchView
-                  searchView?.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                      override fun onQueryTextSubmit(query: String?) = true
-
-                      override fun onQueryTextChange(newText: String?): Boolean {
-                          currentQuery = newText.orEmpty()
-                          filterAppList()
-                          return true
-                      }
-                  })
-                  return true
-              }
-
-              override fun onOptionsItemSelected(item: MenuItem): Boolean {
-                  if (item.itemId == R.id.action_settings) {
-                      startActivity(Intent(this, SettingsActivity::class.java))
-                      return true
-                  }
-                  return super.onOptionsItemSelected(item)
-              }
-
-              private fun filterAppList() {
-                  var list = when (currentTab) {
-                      TAB_COMPATIBLE -> allApps.filter { isGameTarget(it.packageName) }
-                      TAB_INCOMPATIBLE -> allApps.filter { !isGameTarget(it.packageName) }
-                      else -> allApps
-                  }
-
-                  if (showOnlyModified) {
-                      list = list.filter { ResChangePrefs.getScale(this, it.packageName) < 1.0f }
-                  }
-
-                  if (currentQuery.isNotEmpty()) {
-                      val q = currentQuery.lowercase(Locale.getDefault())
-                      list = list.filter {
-                          it.name.lowercase(Locale.getDefault()).contains(q) ||
-                                  it.packageName.lowercase(Locale.getDefault()).contains(q)
-                      }
-                  }
-
-                  adapter.submitList(list)
-              }
-
-              private fun isGameTarget(pkg: String): Boolean {
-                  return ResChangePrefs.getScale(this, pkg) < 1.0f || ForceGamePrefs.isForced(this, pkg)
-              }
-
-              private fun getUserInstalledApps(): List<AppInfo> {
-                  val pm = packageManager
-                  return pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                      .filter { app ->
-                          (app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 &&
-                                  app.packageName != packageName
-                      }
-                      .distinctBy { it.packageName }
-                      .map { app ->
-                          AppInfo(
-                              name = pm.getApplicationLabel(app).toString(),
-                              packageName = app.packageName,
-                              icon = try {
-                                  pm.getApplicationIcon(app)
-                              } catch (_: Exception) {
-                                  pm.defaultActivityIcon
-                              }
-                          )
-                      }
-                      .sortedBy { it.name.lowercase(Locale.getDefault()) }
-              }
-
-              private fun showResolutionDialog(packageName: String) {
-                  val savedScale = ResChangePrefs.getScale(this, packageName)
-                  val isAlt = ModePrefs.isAlternative(this)
-                  val modeLabel = if (isAlt) "Alternative" else "Default"
-                  val isForced = ForceGamePrefs.isForced(this, packageName)
-
-                  val layout = LinearLayout(this).apply {
-                      orientation = LinearLayout.VERTICAL
-                      setPadding(50, 40, 50, 10)
-                  }
-
-                  val modeText = TextView(this).apply {
-                      textSize = 12f
-                      setPadding(0, 0, 0, 8)
-                      text = "Mode: $modeLabel"
-                  }
-
-                  val scaleText = TextView(this).apply {
-                      textSize = 18f
-                      setPadding(0, 0, 0, 20)
-                      text = "Scale: ${(savedScale * 100).toInt()}%"
-                  }
-
-                  val slider = Slider(this).apply {
-                      valueFrom = 0.3f
-                      valueTo = 1.0f
-                      stepSize = 0.05f
-                      value = savedScale
-                      isTickVisible = true
-                  }
-
-                  slider.addOnChangeListener { _, value, _ ->
-                      scaleText.text = "Scale: ${(value * 100).toInt()}%"
-                  }
-
-                  val forceButton = Button(this).apply {
-                      text = if (isForced) "Disable Force Game Category" else "Force Game Category"
-                  }
-
-                  forceButton.setOnClickListener {
-                      val newState = !ForceGamePrefs.isForced(this, packageName)
-                      ForceGamePrefs.saveForce(this, packageName, newState)
-
-                      val appName = allApps.find { it.packageName == packageName }?.name ?: packageName
-                      runAsRoot("am force-stop $packageName")
-                      Toast.makeText(
-                          this,
-                          if (newState) "$appName marked as game" else "$appName unmarked as game",
-                          Toast.LENGTH_SHORT
-                      ).show()
-
-                      forceButton.text = if (newState) "Disable Force Game Category" else "Force Game Category"
-                      filterAppList()
-                  }
-
-                  layout.addView(modeText)
-                  layout.addView(scaleText)
-                  layout.addView(slider)
-                  layout.addView(forceButton)
-
-                  MaterialAlertDialogBuilder(this, R.style.MyRoundedDialog)
-                      .setTitle("Set Resolution Scale")
-                      .setView(layout)
-                      .setPositiveButton("Apply") { _, _ ->
-                          var scale = String.format(Locale.US, "%.2f", slider.value).toFloat()
-
-                          if (scale == 0.95f) {
-                              scale = 0.9f
-                              Toast.makeText(this, "95% not supported. Using 90%.", Toast.LENGTH_SHORT).show()
-                          }
-
-                          val appName = allApps.find { it.packageName == packageName }?.name ?: packageName
-
-                          if (scale >= 1.0f) {
-                              runAsRoot(buildDisableCommand(packageName))
-                              ResChangePrefs.removeScale(this, packageName)
-                              Toast.makeText(this, "Resolution reset to 100% for $appName", Toast.LENGTH_SHORT).show()
-                          } else {
-                              runAsRoot(buildApplyCommand(packageName, scale))
-                              ResChangePrefs.saveScale(this, packageName, scale)
-                              Toast.makeText(
-                                  this,
-                                  "${(scale * 100).toInt()}% applied for $appName [$modeLabel Mode]",
-                                  Toast.LENGTH_SHORT
-                              ).show()
-                          }
-
-                          filterAppList()
-                          runAsRoot("am force-stop $packageName")
-                          Toast.makeText(this, "$appName stopped. Relaunch to apply.", Toast.LENGTH_LONG).show()
-                      }
-                      .setNegativeButton("Cancel", null)
-                      .setNeutralButton("Reset Scale") { _, _ ->
-                          runAsRoot(buildDisableCommand(packageName))
-                          ResChangePrefs.removeScale(this, packageName)
-                          filterAppList()
-
-                          val appName = allApps.find { it.packageName == packageName }?.name ?: packageName
-                          runAsRoot("am force-stop $packageName")
-                          Toast.makeText(this, "$appName reset to 100%. Relaunch to apply.", Toast.LENGTH_LONG).show()
-                      }
-                      .show()
-              }
-
-              private fun buildApplyCommand(pkg: String, scale: Float): String {
-                  val scaleStr = String.format(Locale.US, "%.2f", scale)
-                  return if (ModePrefs.isAlternative(this)) {
-                      "device_config put game_overlay $pkg " +
-                              "mode=2,downscaleFactor=$scaleStr:mode=3,downscaleFactor=$scaleStr"
-                  } else {
-                      "cmd game downscale $scaleStr $pkg 2>/dev/null; " +
-                              "cmd game set --downscale $scaleStr $pkg 2>/dev/null"
-                  }
-              }
-
-              private fun buildDisableCommand(pkg: String): String {
-                  return if (ModePrefs.isAlternative(this)) {
-                      "device_config delete game_overlay $pkg"
-                  } else {
-                      "cmd game downscale disable $pkg 2>/dev/null; " +
-                              "cmd game set --downscale disable $pkg 2>/dev/null"
-                  }
-              }
-
-              private fun runAsRoot(command: String) {
-                  try {
-                      val process = Runtime.getRuntime().exec("su")
-                      DataOutputStream(process.outputStream).use { os ->
-                          os.writeBytes("$command\n")
-                          os.writeBytes("exit\n")
-                          os.flush()
-                      }
-                      process.waitFor()
-                  } catch (_: Exception) {
-                  }
-              }
-          }
-          ''')
-
-          write("app/src/main/java/com/game/reschange/AppListAdapter.kt", r'''
+          write('app/src/main/java/com/game/reschange/AppListAdapter.kt', r'''
           package com.game.reschange
 
           import android.view.LayoutInflater
@@ -585,8 +286,8 @@ jobs:
               inner class AppViewHolder(view: View) : RecyclerView.ViewHolder(view) {
                   val icon: ImageView = view.findViewById(R.id.appIcon)
                   val name: TextView = view.findViewById(R.id.appName)
-                  val packageName: TextView = itemView.findViewById(R.id.packageName)
-                  val modifiedIcon: ImageView = itemView.findViewById(R.id.modifiedIcon)
+                  val packageName: TextView = view.findViewById(R.id.packageName)
+                  val modifiedIcon: ImageView = view.findViewById(R.id.modifiedIcon)
               }
 
               override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AppViewHolder {
@@ -607,10 +308,9 @@ jobs:
                   holder.packageName.text = app.packageName
 
                   val context = holder.itemView.context
-                  val savedScale = ResChangePrefs.getScale(context, app.packageName)
-                  val forced = ForceGamePrefs.isForced(context, app.packageName)
-                  holder.modifiedIcon.visibility =
-                      if (savedScale != 1.0f || forced) View.VISIBLE else View.GONE
+                  val modified = ScalePrefs.getScale(context, app.packageName) < 1.0f ||
+                      ForceGamePrefs.isForced(context, app.packageName)
+                  holder.modifiedIcon.visibility = if (modified) View.VISIBLE else View.GONE
 
                   holder.itemView.setOnClickListener { onClick(app) }
               }
@@ -619,34 +319,298 @@ jobs:
           }
           ''')
 
-          write("app/src/main/res/layout/activity_main.xml", r'''
+          write('app/src/main/java/com/game/reschange/MainActivity.kt', r'''
+          package com.game.reschange
+
+          import android.content.pm.ApplicationInfo
+          import android.content.pm.PackageManager
+          import android.os.Bundle
+          import android.view.View
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import android.widget.Toast
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.core.view.WindowCompat
+          import androidx.recyclerview.widget.LinearLayoutManager
+          import androidx.recyclerview.widget.RecyclerView
+          import com.google.android.material.dialog.MaterialAlertDialogBuilder
+          import com.google.android.material.slider.Slider
+          import com.google.android.material.switchmaterial.SwitchMaterial
+          import com.google.android.material.tabs.TabLayout
+          import java.io.DataOutputStream
+          import java.util.Locale
+
+          class MainActivity : AppCompatActivity() {
+
+              private lateinit var recyclerView: RecyclerView
+              private lateinit var adapter: AppListAdapter
+              private lateinit var toggleModified: SwitchMaterial
+              private lateinit var tabs: TabLayout
+              private lateinit var allApps: List<AppInfo>
+
+              private var showOnlyModified = false
+              private var currentQuery = ""
+              private var currentTab = TAB_COMPATIBLE
+
+              companion object {
+                  private const val TAB_COMPATIBLE = 0
+                  private const val TAB_INCOMPATIBLE = 1
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  WindowCompat.setDecorFitsSystemWindows(window, false)
+                  setContentView(R.layout.activity_main)
+                  setSupportActionBar(findViewById(R.id.myToolbar))
+
+                  recyclerView = findViewById(R.id.appList)
+                  toggleModified = findViewById(R.id.toggleModified)
+                  tabs = findViewById(R.id.categoryTabs)
+                  recyclerView.layoutManager = LinearLayoutManager(this)
+
+                  tabs.addTab(tabs.newTab().setText("Compatíveis"), true)
+                  tabs.addTab(tabs.newTab().setText("Não compatíveis"))
+                  tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+                      override fun onTabSelected(tab: TabLayout.Tab?) {
+                          currentTab = tab?.position ?: TAB_COMPATIBLE
+                          filterAppList()
+                      }
+
+                      override fun onTabUnselected(tab: TabLayout.Tab?) = Unit
+                      override fun onTabReselected(tab: TabLayout.Tab?) {
+                          filterAppList()
+                      }
+                  })
+
+                  allApps = getUserInstalledApps()
+                  adapter = AppListAdapter(emptyList()) { appInfo ->
+                      showResolutionDialog(appInfo.packageName)
+                  }
+                  recyclerView.adapter = adapter
+
+                  toggleModified.setOnCheckedChangeListener { _, checked ->
+                      showOnlyModified = checked
+                      filterAppList()
+                  }
+
+                  findViewById<Button>(R.id.resetButton).setOnClickListener {
+                      val scalePackages = ScalePrefs.getAllPackages(this)
+                      for (pkg in scalePackages) {
+                          runAsRoot(buildDisableCommand(pkg))
+                      }
+
+                      val forcedPackages = ForceGamePrefs.getAllPackages(this)
+                      for (pkg in forcedPackages) {
+                          ForceGamePrefs.removeForce(this, pkg)
+                      }
+
+                      ScalePrefs.clearAll(this)
+                      ForceGamePrefs.clearAll(this)
+                      filterAppList()
+                      Toast.makeText(this, "Tudo foi redefinido", Toast.LENGTH_SHORT).show()
+                  }
+
+                  findViewById<TextView>(R.id.compatHint).text =
+                      "Compatíveis = apps com resolução alterada ou Force Game Category."
+
+                  filterAppList()
+              }
+
+              private fun filterAppList() {
+                  var list = when (currentTab) {
+                      TAB_COMPATIBLE -> allApps.filter { isGameTarget(it.packageName) }
+                      TAB_INCOMPATIBLE -> allApps.filter { !isGameTarget(it.packageName) }
+                      else -> allApps
+                  }
+
+                  if (showOnlyModified) {
+                      list = list.filter { isModified(it.packageName) }
+                  }
+
+                  if (currentQuery.isNotEmpty()) {
+                      val q = currentQuery.lowercase(Locale.getDefault())
+                      list = list.filter {
+                          it.name.lowercase(Locale.getDefault()).contains(q) ||
+                              it.packageName.lowercase(Locale.getDefault()).contains(q)
+                      }
+                  }
+
+                  adapter.submitList(list)
+              }
+
+              private fun isModified(packageName: String): Boolean {
+                  return ScalePrefs.getScale(this, packageName) < 1.0f ||
+                      ForceGamePrefs.isForced(this, packageName)
+              }
+
+              private fun isGameTarget(packageName: String): Boolean {
+                  return ScalePrefs.getScale(this, packageName) < 1.0f ||
+                      ForceGamePrefs.isForced(this, packageName)
+              }
+
+              private fun getUserInstalledApps(): List<AppInfo> {
+                  val pm = packageManager
+                  return pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                      .filter { app ->
+                          (app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 &&
+                              app.packageName != packageName
+                      }
+                      .distinctBy { it.packageName }
+                      .map { app ->
+                          AppInfo(
+                              name = pm.getApplicationLabel(app).toString(),
+                              packageName = app.packageName,
+                              icon = try {
+                                  pm.getApplicationIcon(app)
+                              } catch (_: Exception) {
+                                  pm.defaultActivityIcon
+                              }
+                          )
+                      }
+                      .sortedBy { it.name.lowercase(Locale.getDefault()) }
+              }
+
+              private fun showResolutionDialog(packageName: String) {
+                  val savedScale = ScalePrefs.getScale(this, packageName)
+                  var forced = ForceGamePrefs.isForced(this, packageName)
+
+                  val layout = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(50, 40, 50, 10)
+                  }
+
+                  val scaleText = TextView(this).apply {
+                      textSize = 18f
+                      setPadding(0, 0, 0, 20)
+                      text = "Scale: ${(savedScale * 100).toInt()}%"
+                  }
+
+                  val slider = Slider(this).apply {
+                      valueFrom = 0.30f
+                      valueTo = 1.00f
+                      stepSize = 0.05f
+                      value = savedScale
+                      isTickVisible = true
+                  }
+
+                  slider.addOnChangeListener { _, value, _ ->
+                      scaleText.text = "Scale: ${(value * 100).toInt()}%"
+                  }
+
+                  val forceButton = Button(this).apply {
+                      text = if (forced) "Disable Force Game Category" else "Force Game Category"
+                  }
+
+                  forceButton.setOnClickListener {
+                      forced = !forced
+                      ForceGamePrefs.saveForce(this, packageName, forced)
+                      forceButton.text = if (forced) "Disable Force Game Category" else "Force Game Category"
+                      runAsRoot("am force-stop $packageName")
+                      filterAppList()
+                      Toast.makeText(
+                          this,
+                          if (forced) "App marcado como jogo" else "Force Game Category removido",
+                          Toast.LENGTH_SHORT
+                      ).show()
+                  }
+
+                  layout.addView(scaleText)
+                  layout.addView(slider)
+                  layout.addView(forceButton)
+
+                  MaterialAlertDialogBuilder(this)
+                      .setTitle("Set Resolution Scale")
+                      .setView(layout)
+                      .setPositiveButton("Apply") { _, _ ->
+                          var scale = String.format(Locale.US, "%.2f", slider.value).toFloat()
+
+                          if (scale == 0.95f) {
+                              scale = 0.90f
+                              Toast.makeText(this, "95% não é suportado. Usando 90%.", Toast.LENGTH_SHORT).show()
+                          }
+
+                          if (scale >= 1.0f) {
+                              runAsRoot(buildDisableCommand(packageName))
+                              ScalePrefs.removeScale(this, packageName)
+                              Toast.makeText(this, "Resolução resetada para 100%", Toast.LENGTH_SHORT).show()
+                          } else {
+                              runAsRoot(buildApplyCommand(packageName, scale))
+                              ScalePrefs.saveScale(this, packageName, scale)
+                              Toast.makeText(
+                                  this,
+                                  "${(scale * 100).toInt()}% aplicado",
+                                  Toast.LENGTH_SHORT
+                              ).show()
+                          }
+
+                          runAsRoot("am force-stop $packageName")
+                          filterAppList()
+                          Toast.makeText(this, "Reabra o app para aplicar", Toast.LENGTH_LONG).show()
+                      }
+                      .setNeutralButton("Reset Scale") { _, _ ->
+                          runAsRoot(buildDisableCommand(packageName))
+                          ScalePrefs.removeScale(this, packageName)
+                          runAsRoot("am force-stop $packageName")
+                          filterAppList()
+                          Toast.makeText(this, "Scale removido", Toast.LENGTH_SHORT).show()
+                      }
+                      .setNegativeButton("Cancel", null)
+                      .show()
+              }
+
+              private fun buildApplyCommand(pkg: String, scale: Float): String {
+                  val scaleStr = String.format(Locale.US, "%.2f", scale)
+                  return "cmd game downscale $scaleStr $pkg 2>/dev/null; cmd game set --downscale $scaleStr $pkg 2>/dev/null"
+              }
+
+              private fun buildDisableCommand(pkg: String): String {
+                  return "cmd game downscale disable $pkg 2>/dev/null; cmd game set --downscale disable $pkg 2>/dev/null"
+              }
+
+              private fun runAsRoot(command: String) {
+                  try {
+                      val process = Runtime.getRuntime().exec("su")
+                      DataOutputStream(process.outputStream).use { os ->
+                          os.writeBytes("$command\n")
+                          os.writeBytes("exit\n")
+                          os.flush()
+                      }
+                      process.waitFor()
+                  } catch (_: Exception) {
+                  }
+              }
+          }
+          ''')
+
+          write('app/src/main/res/layout/activity_main.xml', r'''
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
               xmlns:app="http://schemas.android.com/apk/res-auto"
               android:layout_width="match_parent"
               android:layout_height="match_parent"
               android:orientation="vertical"
-              android:paddingTop="8dp"
-              android:fitsSystemWindows="true">
+              android:fitsSystemWindows="true"
+              android:paddingTop="8dp">
 
               <androidx.appcompat.widget.Toolbar
                   android:id="@+id/myToolbar"
                   android:layout_width="match_parent"
                   android:layout_height="?attr/actionBarSize"
                   android:background="?attr/colorSurface"
-                  app:titleTextColor="?android:attr/textColorPrimary"
-                  app:popupTheme="@style/ThemeOverlay.MaterialComponents.Light" />
+                  app:title="GameResChange"
+                  app:titleTextColor="?android:attr/textColorPrimary" />
 
               <TextView
                   android:id="@+id/compatHint"
                   android:layout_width="match_parent"
                   android:layout_height="wrap_content"
                   android:paddingStart="16dp"
-                  android:paddingEnd="16dp"
                   android:paddingTop="8dp"
-                  android:textSize="12sp"
+                  android:paddingEnd="16dp"
                   android:textColor="?android:attr/textColorSecondary"
-                  android:text="Compatibilidade e força de categoria aparecem aqui." />
+                  android:textSize="12sp"
+                  android:text="Compatibilidade e Force Game Category aparecem aqui." />
 
               <com.google.android.material.tabs.TabLayout
                   android:id="@+id/categoryTabs"
@@ -654,19 +618,8 @@ jobs:
                   android:layout_height="wrap_content"
                   android:paddingStart="8dp"
                   android:paddingEnd="8dp"
-                  app:tabMode="fixed"
-                  app:tabGravity="fill">
-
-                  <com.google.android.material.tabs.TabItem
-                      android:layout_width="wrap_content"
-                      android:layout_height="wrap_content"
-                      android:text="Compatíveis" />
-
-                  <com.google.android.material.tabs.TabItem
-                      android:layout_width="wrap_content"
-                      android:layout_height="wrap_content"
-                      android:text="Não compatíveis" />
-              </com.google.android.material.tabs.TabLayout>
+                  app:tabGravity="fill"
+                  app:tabMode="fixed" />
 
               <com.google.android.material.switchmaterial.SwitchMaterial
                   android:id="@+id/toggleModified"
@@ -686,7 +639,7 @@ jobs:
                   android:paddingEnd="8dp"
                   android:paddingBottom="8dp" />
 
-              <com.google.android.material.button.MaterialButton
+              <Button
                   android:id="@+id/resetButton"
                   android:layout_width="match_parent"
                   android:layout_height="wrap_content"
@@ -695,21 +648,54 @@ jobs:
           </LinearLayout>
           ''')
 
-          write("README.md", r'''
-          # GameResChange (Fork)
+          write('app/src/main/res/layout/item_app.xml', r'''
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:background="?android:attr/selectableItemBackground"
+              android:gravity="center_vertical"
+              android:orientation="horizontal"
+              android:padding="12dp">
 
-          > Fork do projeto original [GameResChange](https://github.com/Xposed-Modules-Repo/com.game.reschange) criado por [danmgk](https://t.me/danmgk).
-          > Todo o crédito pelo conceito e código base pertence ao autor original.
+              <ImageView
+                  android:id="@+id/appIcon"
+                  android:layout_width="40dp"
+                  android:layout_height="40dp"
+                  android:contentDescription="App icon" />
 
-          ## O que este fork adiciona
+              <LinearLayout
+                  android:layout_width="0dp"
+                  android:layout_height="wrap_content"
+                  android:layout_weight="1"
+                  android:orientation="vertical"
+                  android:paddingStart="12dp"
+                  android:paddingEnd="12dp">
 
-          - Dual Operation Mode
-          - Reaplicação automática ao abrir o app
-          - Lista completa de apps
-          - **Force Game Category** para apps que não entram como jogo por padrão
-          - Separação visual entre apps com suporte/configuração e os demais
+                  <TextView
+                      android:id="@+id/appName"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:textSize="16sp"
+                      android:textStyle="bold" />
+
+                  <TextView
+                      android:id="@+id/packageName"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:textSize="12sp"
+                      android:textColor="?android:attr/textColorSecondary" />
+              </LinearLayout>
+
+              <ImageView
+                  android:id="@+id/modifiedIcon"
+                  android:layout_width="24dp"
+                  android:layout_height="24dp"
+                  android:contentDescription="Modified"
+                  android:src="@android:drawable/ic_menu_manage"
+                  android:visibility="gone" />
+          </LinearLayout>
           ''')
-
           PY
 
       - name: Setup Java 17
@@ -718,10 +704,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Permissao gradlew
+      - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build Release APK
+      - name: Build release APK
         run: ./gradlew assembleRelease
 
       - name: Upload APK
