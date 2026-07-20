@@ -49,6 +49,7 @@ android {
     }
     buildFeatures {
         compose = true
+        aidl = true
     }
 }
 
@@ -65,6 +66,8 @@ dependencies {
     implementation(libs.androidx.recyclerview)
     implementation(libs.androidx.appcompat)
     implementation("com.google.android.material:material:1.11.0")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
