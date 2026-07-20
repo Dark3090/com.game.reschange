@@ -36,7 +36,7 @@ jobs:
           package com.game.reschange;
 
           interface IShellService {
-              String exec(String command);
+              String exec(String command) = 1;
 
               // Codigo de transacao fixo que o Shizuku usa para encerrar o
               // servico ao trocar de versao (ver ShellUserService.destroy()).
